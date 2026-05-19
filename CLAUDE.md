@@ -1,7 +1,7 @@
 # CLAUDE.md — UidSkills
 > Leia este arquivo SEMPRE antes de qualquer ação.
 > Repositório: github.com/UidSoftware/UidSkills
-> Última atualização: 2026-05-17
+> Última atualização: 2026-05-19
 
 ---
 
@@ -28,13 +28,16 @@ completo de agents da Uid. Cada skill é um especialista.
 ## O Pipeline da Fábrica
 
 ```
-LEAD NO BANCO (MCP PostgreSQL)
+LEAD NO BANCO (MCP PostgreSQL — vitrine_lead)
         ↓
-   [PLANNER]          ← lê lead, qualifica, orquestra tudo
+   [PLANNER]          ← lê lead via MCP, qualifica, orquestra tudo
         ↓
    [ANALISTA]         ← elicita, modela, documenta (Sommerville)
         ↓
-   [FORMULÁRIO]       ← Luiz Eduardo preenche arquitetura técnica
+   [ARQUITETURA]      ← Luiz Eduardo preenche no SystemD
+                         Office → Novo Projeto → Arquitetura Técnica
+                         Salva em ordens_arquiteturatecnica (banco)
+                         Planner lê via MCP e continua
         ↓
    [DOC-GENERATOR]    ← gera 8 documentos do projeto
         ↓
@@ -70,7 +73,7 @@ UidSkills/
         └── doc-generator_SKILL.md   ← Gerador de 8 documentos
 ```
 
-> Formulário de Arquitetura Técnica → SystemD (menu Office → Novo Projeto)
+> Arquitetura Técnica → SystemD: uidsoftware.com.br/sistema → Office → Novo Projeto → Arquitetura Técnica
 > Artigo Engenharia de Requisitos → conteúdo Uid (LinkedIn, blog)
 
 ---
@@ -146,6 +149,33 @@ ou requisito técnico específico documentado no ADR.
 
 ---
 
+## MCP — Acesso ao banco do SystemD
+
+O Planner acessa o banco via MCP PostgreSQL configurado na VPS.
+
+**Conexão:** `postgresql://uid_user:***@127.0.0.1:5433/uid_sistema`
+**Verificar:** `claude mcp list` → `systemd: ... ✓ Connected`
+
+**Queries principais do Planner:**
+```sql
+-- Novos leads aguardando qualificação
+SELECT * FROM vitrine_lead WHERE convertido = false ORDER BY criado_em DESC;
+
+-- Arquitetura Técnica salva no SystemD
+SELECT * FROM ordens_arquiteturatecnica ORDER BY criado_em DESC LIMIT 1;
+
+-- Criar OS após aprovação
+INSERT INTO ordens_os (cliente_id, titulo, status) VALUES (...);
+
+-- Marcar lead como convertido
+UPDATE vitrine_lead SET convertido = true WHERE id = X;
+```
+
+**Permissões MCP** (em `/root/.claude/settings.json`):
+`mcp__systemd__query`, `mcp__systemd__list_tables`, `mcp__systemd__describe_table`
+
+---
+
 ## Infra VPS — portas ocupadas
 
 | Projeto | Porta | Domínio |
@@ -155,6 +185,7 @@ ou requisito técnico específico documentado no ADR.
 | Mailcow HTTP | 8080 | mail.uidsoftware.com.br |
 | Mailcow HTTPS | 8443 | mail.uidsoftware.com.br |
 | UidMail | 8084 | uidmail.uidsoftware.com.br |
+| **OfficeUid** | **8004** | office.uidsoftware.com.br |
 | **Próximo cliente** | **8003+** | a definir |
 
 > Sempre verificar porta disponível antes de definir no docker-compose.prod.yml
