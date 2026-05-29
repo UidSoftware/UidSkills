@@ -1,7 +1,7 @@
 # CLAUDE.md — UidSkills
 > Leia este arquivo SEMPRE antes de qualquer ação.
 > Repositório: github.com/UidSoftware/UidSkills
-> Última atualização: 2026-05-19
+> Última atualização: 2026-05-29
 
 ---
 
@@ -19,6 +19,9 @@ do lead ao deploy.
 
 Ao abrir o Claude Code neste diretório, você tem acesso ao time
 completo de agents da Uid. Cada skill é um especialista.
+
+As skills também estão instaladas **globalmente** em `~/.claude/skills/`
+— disponíveis em qualquer projeto sem precisar abrir este diretório.
 
 **Nunca execute uma skill sem ler sua descrição primeiro.**
 **Nunca pule etapas do pipeline — o Planner orquestra a ordem.**
@@ -232,10 +235,10 @@ VPS:      209.50.241.122 (usuário: notuidsoftware)
 ```
 ⬜ Testar pipeline completo com projeto fictício (salão de beleza)
 ⬜ Ajustar skills baseado nos travamentos encontrados
-⬜ Criar PlannerSKILL com integração MCP real (PostgreSQL SystemD)
-⬜ Integrar Claude Office como menu Office no SystemD
+✅ Skills instaladas globalmente em ~/.claude/skills/ (29/05/2026)
 ⬜ Adicionar n8n ao pipeline (notificações WhatsApp + email)
 ⬜ Criar templates por segmento (saúde, salão, loja, agro...)
+⬜ Versionamento das skills (tag por projeto executado com sucesso)
 ```
 
 ---
