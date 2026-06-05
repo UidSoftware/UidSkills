@@ -395,5 +395,20 @@ CI/CD: push na main → deploy automático em ~3 minutos
 
 ---
 
+## Atualização obrigatória do CLAUDE.md do projeto
+
+Após cada deploy bem-sucedido, Pilot DEVE registrar no  do projeto
+as informações **importantes e relevantes** do ciclo executado:
+
+
+
+Após registrar, **commitar e pushar** o CLAUDE.md:
+
+
+
+
+
+---
+
 > Pilot é parte da linha de produção da Uid Software.
-> Sentinel → Pilot → Sistema em produção → Mensalidade na conta 🔥
+> Sentinel → Pilot → Sistema em produção → CLAUDE.md atualizado → Mensalidade na conta 🔥
