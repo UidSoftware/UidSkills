@@ -230,6 +230,79 @@ VPS:      209.50.241.122 (usuário: notuidsoftware)
 
 ---
 
+
+---
+
+### [2026-06-04/05] — HotfixSKILL criada + pipeline Hotfix→Planner corrigido
+
+#### Nova skill: `HotfixSKILL.md`
+
+Skill criada para o agente Hotfix com:
+- Papel exclusivo de **diagnóstico e handoff** — nunca implementa código
+- Leitura do `CLAUDE.md` do projeto para carregar contexto
+- Handoff imediato para o Planner via `Agent(subagent_type='planner')`
+- Guardrail explícito contra auto-recursão: `❌ NUNCA chamar Agent(subagent_type='hotfix')`
+- Bash PERMITIDO apenas para leitura: `git status`, `git log`, `docker ps`, `docker logs`
+- Bash PROIBIDO para qualquer modificação: `git add`, `docker compose`, `npm`, `rm`
+
+#### Correções nas skills existentes
+
+**`BrushSKILL.md` — simplificada:**
+- Removida seção de integração com motor `ui-ux-pro-max` (script Python `search.py`)
+- Brush agora aplica o padrão Uid diretamente + referências visuais por segmento
+
+**Pipeline corrigido — Hotfix→Planner (não Planner→Hotfix):**
+```
+Boss CLI
+    ↓
+Hotfix (lê CLAUDE.md do projeto, diagnóstico, handoff)
+    ↓
+Planner (classifica tarefas, monta briefings, orquestra)
+    ↓
+Forge + Loom (paralelo)
+    ↓
+Sentinel → Pilot
+```
+
+#### Uso do pipeline de manutenção validado em produção
+
+Pipeline rodado com sucesso no **Studio Fluir** (2026-06-04/05):
+- Boss CLI → Hotfix → Planner → Forge + Loom → Sentinel → Pilot
+- Tarefa: dashboard profissional + análise UI/UX completa (P0→P3)
+- 30 melhorias implementadas, 42 arquivos com emojis, build Docker sem erros
+- CI/CD GitHub Actions passando (117 testes)
+
+#### Status atual das skills
+
+| Skill | Arquivo | Status |
+|---|---|---|
+| Planner | `planner.md` | ✅ Atualizado (pipeline único, edge cases) |
+| Analista | `analista.md` | ✅ Estável |
+| doc-generator | `doc-generator.md` | ✅ Estável |
+| Blueprint | `blueprint.md` | ✅ Estável |
+| Brush | `brush.md` | ✅ Simplificado (sem ui-ux-pro-max) |
+| Forge | `forge.md` | ✅ Estável |
+| Loom | `loom.md` | ✅ Estável |
+| Sentinel | `sentinel.md` | ✅ Estável |
+| Pilot | `pilot.md` | ✅ Estável |
+| Hotfix | `hotfix.md` | ✅ Restrições explícitas adicionadas |
+| HotfixSKILL | `HotfixSKILL.md` | ✅ Nova — criada neste ciclo |
+
+#### Próximos passos
+
+```
+✅ HotfixSKILL.md criada
+✅ Pipeline Hotfix→Planner corrigido e validado em produção
+✅ BrushSKILL simplificada
+⬜ AnalistaSKILL — integrar com MCP PostgreSQL do SystemD (lead real)
+⬜ PlannerSKILL — integrar com MCP PostgreSQL do SystemD
+⬜ Criar skill de n8n (notificações automáticas)
+⬜ Testar pipeline completo com novo cliente (projeto fictício salão de beleza)
+⬜ Criar templates de projeto por segmento (saúde, salão, agro, loja)
+```
+
+---
+
 ## Próximos passos do repositório
 
 ```
