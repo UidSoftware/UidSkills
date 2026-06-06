@@ -398,7 +398,13 @@ OS criada no SystemD ✅
 ✅ SEMPRE manter cliente informado a cada sprint
 ✅ SEMPRE aguardar Sentinel aprovar antes de disparar Pilot
 ✅ SEMPRE criar OS no SystemD ao iniciar novo projeto
+✅ SEMPRE disparar o Pilot após aprovação do Sentinel — SEM EXCEÇÃO
 ```
+
+> **O PILOT É OBRIGATÓRIO E É ELE QUE FECHA O LOOP COM O CI/CD.**
+> **NÃO É OPCIONAL MESMO QUE O SENTINEL APROVE.**
+> **SEM PILOT: nenhum commit, nenhum push, CI/CD não dispara, produção não atualiza.**
+> **Pipeline completo: Forge+Loom → Sentinel APROVADO → Pilot commit+push → CI/CD deploya.**
 
 ---
 
