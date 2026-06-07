@@ -5,7 +5,7 @@ description: >
   quando precisar orquestrar o time de agents da Uid.
   Planner é o Lead Agent e Gerente de Projeto da Uid — lê o lead do
   banco via MCP, decide se está pronto para análise, orquestra toda a
-  esteira de produção (Analista → doc-generator → Blueprint → Forge →
+  esteira de produção (Analista → Blueprint → Forge →
   Loom → Sentinel → Pilot), gerencia o projeto com Scrum para o cliente
   e Kanban para os agents internos.
   Dispare quando mencionar: "novo projeto", "novo cliente", "iniciar
@@ -40,7 +40,6 @@ SCRUM → cliente e Luiz Eduardo
 
 KANBAN → agents internos
 ├── Analista     → [Backlog|Em Andamento|Concluído]
-├── doc-generator→ [Backlog|Em Andamento|Concluído]
 ├── Blueprint    → [Backlog|Em Andamento|Concluído]
 ├── Forge        → [Backlog|Em Andamento|Concluído]
 ├── Loom         → [Backlog|Em Andamento|Concluído]
@@ -139,12 +138,7 @@ Etapa 1.5 — Arquitetura Técnica
      de Arquitetura Técnica antes de continuar"
     Aguarda Arquitetura_Tecnica.md
         ↓
-Etapa 2 — Documentação (doc-generator SKILL)
-    Planner dispara doc-generator
-    doc-generator gera 8 documentos
-    Planner recebe e valida outputs
-        ↓
-Etapa 3 — Arquitetura (BlueprintSKILL)
+Etapa 2 — Arquitetura (BlueprintSKILL)
     Planner dispara Blueprint
     Blueprint define estrutura técnica
     Blueprint entrega planta + ADRs + plano
@@ -259,7 +253,7 @@ Para Luiz Eduardo:
 
 ```
 ❌ Lead incompleto → aguardar info, não disparar Analista
-❌ Arquitetura_Tecnica.md não preenchida → não disparar doc-generator
+❌ Arquitetura_Tecnica.md não preenchida → não disparar Blueprint
 ❌ Sentinel reprovado → retornar para Forge/Loom, não disparar Pilot
 ❌ Conflict de porta VPS → resolver com Luiz Eduardo antes do deploy
 ❌ Domínio não apontado para VPS → não disparar Pilot
