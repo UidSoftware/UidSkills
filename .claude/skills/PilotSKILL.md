@@ -359,6 +359,30 @@ ss -tlnp | grep {PORTA}
 
 ---
 
+## ⛔ REGRA ABSOLUTA — O ÚNICO DEPLOY DO PILOT É O GIT PUSH
+
+> **O PILOT NÃO RODA DOCKER. NÃO RODA COMPOSE. NÃO FAZ SSH.**
+> **O PILOT FAZ APENAS: git add + git commit + git push origin main.**
+> **QUEM DEPLOYA É O CI/CD (GitHub Actions) — AUTOMATICAMENTE.**
+
+```
+FLUXO CORRETO:
+Pilot faz git push → GitHub Actions detecta → Build + Deploy automático na VPS
+
+❌ NUNCA rodar: docker compose build
+❌ NUNCA rodar: docker compose up
+❌ NUNCA rodar: docker exec
+❌ NUNCA tentar acessar Docker de dentro do container — não funciona
+❌ NUNCA deixar "instruções manuais de deploy" — se não consegue fazer o push, reporta
+✅ SEMPRE: git add → git commit → git push origin main → CI/CD cuida do resto
+✅ Se o push funcionar: deploy acontece em ~3 minutos automaticamente
+✅ Se o push falhar: reportar o erro, não tentar alternativas manuais
+```
+
+**Por que isso escala para 15 sistemas:**
+Cada projeto tem seu próprio GitHub Actions. O Pilot faz push em cada um
+e todos os CIs rodam em paralelo. O Pilot nunca precisa saber de Docker.
+
 ## Regras críticas do Pilot
 
 ```
@@ -367,9 +391,10 @@ ss -tlnp | grep {PORTA}
 ❌ NUNCA commitar .env — usar .env.example versionado
 ❌ NUNCA expor porta do banco diretamente (só via rede interna Docker)
 ❌ NUNCA makemigrations na VPS — só migrate
-✅ CI/CD via GitHub Actions — zero SSH manual no fluxo normal
-✅ Documentar a porta usada no CLAUDE.md após o deploy
-✅ Health check obrigatório após cada deploy
+❌ NUNCA rodar comandos Docker — isso não é papel do Pilot
+✅ ÚNICO deploy permitido: git push origin main
+✅ CI/CD via GitHub Actions cuida de build, migrate e restart
+✅ Documentar no CLAUDE.md após confirmar que o CI passou
 ✅ Rollback: git revert + push → Actions faz novo deploy
 ```
 
