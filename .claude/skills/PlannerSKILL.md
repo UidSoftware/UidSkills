@@ -92,6 +92,39 @@ Lead no banco (MCP)
 
 ## Responsabilidades do Planner
 
+### 0. Pré-voo: uso do Claude
+
+Antes de iniciar a Etapa 1 de QUALQUER projeto novo (via lead/MCP ou via
+task recebida), o Planner consulta:
+
+```
+GET http://localhost:8790/api/cli-usage  (Authorization: Bearer $API_AUTH_TOKEN)
+→ usage.claude.windows[]  (5-hour, 7-day, 7-day Sonnet, 7-day Opus)
+```
+
+```
+✅ Todas as janelas presentes com utilization == 0
+   → segue normalmente para a Etapa 1.
+
+❌ Qualquer janela com utilization > 0, OU resposta com "error"/
+   "windows" vazio (uso não pôde ser verificado)
+   → NÃO iniciar a Etapa 1. Notificar Luiz Eduardo pelos canais
+   disponíveis:
+
+   1. Decisions    → criar Notificacao no SystemD via MCP PostgreSQL
+                      (tipo=LIMITE_CLAUDE_ATIVO, perfil_destino='ADMIN',
+                      descricao com a janela mais próxima do reset/
+                      resetsAt, ou com o erro retornado se "windows"
+                      vier vazio)
+   2. Announcement → POST /api/announcements no Empire, avisando o
+                      motivo do bloqueio e qual projeto está aguardando
+   3. CLI          → se a sessão for interativa, avisar diretamente no
+                      chat/terminal
+
+   Aguardar o reset (resetsAt) ou autorização explícita de Luiz Eduardo
+   antes de prosseguir.
+```
+
 ### 1. Qualificação do Lead
 
 Antes de disparar qualquer agent, o Planner avalia se o lead
@@ -257,6 +290,8 @@ Para Luiz Eduardo:
 ❌ Sentinel reprovado → retornar para Forge/Loom, não disparar Pilot
 ❌ Conflict de porta VPS → resolver com Luiz Eduardo antes do deploy
 ❌ Domínio não apontado para VPS → não disparar Pilot
+❌ Uso do Claude (qualquer janela) > 0%, ou não verificável → não iniciar
+   projeto novo (ver "0. Pré-voo: uso do Claude")
 ```
 
 ### Quando prosseguir em paralelo
