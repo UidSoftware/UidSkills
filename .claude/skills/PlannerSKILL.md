@@ -413,6 +413,51 @@ OS criada no SystemD ✅
     Mensalidade na conta 🔥
 ```
 
+
+---
+
+## Automacao e Retomada por Limite de Tokens
+
+Tasks com `[retomada N]` no titulo sao geradas pelo watchdog `retomar_agente.py`
+quando a sessao anterior foi interrompida por esgotamento de tokens.
+A nova sessao comeca com tokens frescos — a missao e continuar de onde parou.
+
+### Protocolo ao receber task de retomada
+
+**1. Avaliar estado atual ANTES de qualquer acao:**
+
+```bash
+ls -la {project_path}/
+git -C {project_path} log --oneline -20 2>/dev/null || echo "sem commits"
+docker ps --filter name={slug_projeto}
+```
+
+**2. Determinar ponto de parada e avancar:**
+
+| Estado encontrado | Proxima acao |
+|---|---|
+| Backend sem commits | Retomar Forge do inicio |
+| Backend commitado, frontend ausente | Pular Forge, disparar Loom |
+| Ambos commitados | Ir direto para Sentinel |
+| Sentinel aprovado | Disparar Pilot diretamente |
+
+**3.** Arquivo parcial (ex: models sem migrations)? Completar antes de avancar.  
+**4.** Nao refaca o que ja esta commitado no repo.  
+**5.** O campo `source_task_id` aponta para a task original — ler para entender o escopo completo.
+
+### Regras de automacao
+
+```
+ERRADO: PATCH /api/tasks/{id}  com {status: "in_progress"}
+        -> so muda o banco, nao inicia processo — agente nunca executa
+
+CERTO:  POST /api/tasks/{id}/run
+        -> inicia o subprocesso Claude Code com worktree isolado
+
+O script disparar_planner.py e o watchdog retomar_agente.py ja chamam /run.
+Se criar tasks manualmente ou via subagent, tambem deve chamar /run depois.
+```
+
 ---
 
 ## Regras críticas do Planner
@@ -427,6 +472,8 @@ OS criada no SystemD ✅
 ✅ SEMPRE manter cliente informado a cada sprint
 ✅ SEMPRE aguardar Sentinel aprovar antes de disparar Pilot
 ✅ SEMPRE criar OS no SystemD ao iniciar novo projeto
+✅ SEMPRE avaliar ls + git log do project_path ao receber task de retomada
+✅ SEMPRE usar source_task_id da retomada para ler contexto da task original
 ✅ SEMPRE disparar o Pilot após aprovação do Sentinel — SEM EXCEÇÃO
 ```
 
