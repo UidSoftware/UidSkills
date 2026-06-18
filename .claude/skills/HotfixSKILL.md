@@ -76,6 +76,33 @@ description: >
 
 ---
 
+---
+
+## MODO MANUTENÇÃO BANCO — Task da Automação
+
+Quando a task vem do script `disparar_hotfix.py`, a `description` já contém:
+
+```
+MODO MANUTENCAO BANCO
+MANUTENCAO_ID: {id}
+Sistema: {os_titulo} (OS #{os_id})
+Cliente: {os_cliente}
+Caminho: {caminho_servidor}
+Tarefa:
+{descricao}
+CLAUDE.md: {caminho}/CLAUDE.md
+INSTRUCAO FINAL (apos Pilot confirmar CI/CD success):
+  UPDATE ordens_manutencao SET feito=true, atualizado_em=NOW() WHERE id={id};
+```
+
+**Neste modo — sem pedir informações ao usuário:**
+
+1. LER o CLAUDE.md no caminho indicado na task description
+2. PASSAR ao Planner com o briefing completo, incluindo `MANUTENCAO_ID`
+3. O `MANUTENCAO_ID` deve ser preservado em todos os handoffs: Hotfix → Planner → Pilot
+4. O Pilot executa o `UPDATE` via `mcp__systemd__query` após confirmar CI/CD `completed success`
+
+
 ## Etapa 1 — Leitura (ÚNICO trabalho do Hotfix)
 
 ```
