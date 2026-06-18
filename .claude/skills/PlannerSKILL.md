@@ -124,6 +124,53 @@ Lead + Entrevista + ArquiteturaTecnica no banco (MCP)
 
 ## Responsabilidades do Planner
 
+
+## MODO HOTFIX — Pipeline Abreviado
+
+Quando chamado pelo Hotfix (manutenção de sistema existente em produção),
+o Planner pula Analista, doc-generator, Blueprint e Brush.
+O sistema já existe — a arquitetura já está definida.
+
+```
+Hotfix recebido → Planner entra aqui
+        ↓
+[PLANNER] le CLAUDE.md + arquivos relevantes
+        ↓
+[FORGE] via Agent tool (backend — se houver mudancas)
+[LOOM]  via Agent tool (frontend — se houver mudancas)
+   ambos em PARALELO
+        ↓
+COMMIT OBRIGATORIO — verificar antes de continuar:
+   git status → deve mostrar "nothing to commit, working tree clean"
+   Se houver arquivos sao commitados: git add + git commit AGORA
+   SEM COMMIT = Sentinel nao vera as mudancas = esteira quebrada
+        ↓
+[SENTINEL] via TaskCreate (nao via Agent tool)
+   TaskCreate(title="Sentinel — [projeto]", agent="Sentinel")
+   Aguardar aprovacao
+        ↓
+[PILOT] via TaskCreate (somente se Sentinel aprovar)
+   TaskCreate(title="Pilot — [projeto]", agent="Pilot")
+   Aguardar conclusao
+```
+
+### Regras criticas do modo hotfix
+
+```
+PULAR: Analista, doc-generator, Blueprint, Brush
+NAO PULAR: Forge, Loom, commit, Sentinel, Pilot
+
+FORGE e LOOM → Agent tool (subagentes locais — implementam no worktree)
+SENTINEL e PILOT → TaskCreate (tasks Empire com worktree proprio)
+
+Por que Sentinel e Pilot precisam de TaskCreate e nao Agent tool?
+Porque precisam de worktree isolado para validar e deployar.
+Se chamados via Agent tool, nao tem acesso ao ambiente de producao.
+
+COMMIT entre Loom e Sentinel e OBRIGATORIO.
+Sem commit: Sentinel ve worktree vazio, aprova sem validar nada.
+```
+
 ### 0. Pré-voo: uso do Claude
 
 Antes de iniciar a Etapa 1 de QUALQUER projeto novo (via lead/MCP ou via

@@ -370,8 +370,28 @@ export function {Modulo}Page() {
 
 ## Passagem de bastão
 
+### COMMIT OBRIGATÓRIO antes de retornar ao Planner
+
+```bash
+# Verificar o que foi alterado
+git status
+git diff --stat
+
+# Adicionar TODOS os arquivos alterados e criados
+git add frontend/  # ou os caminhos especificos
+
+# Commitar com mensagem descritiva
+git commit -m "feat/fix: [descricao das mudancas]"
+
+# Confirmar que nao ha nada pendente
+git status  # deve mostrar: nothing to commit, working tree clean
 ```
-✅ Frontend implementado — {nome_sistema}
+
+> **SEM COMMIT = o Sentinel nao vera as mudancas = esteira quebrada.**
+> **O commit e parte da entrega — nao e opcional.**
+
+```
+✅ Frontend implementado e commitado — {nome_sistema}
 
 Entregáveis:
 - AuthContext + JWT configurado
@@ -379,7 +399,9 @@ Entregáveis:
 - Integração com {N} endpoints
 - PWA instalável (Android + iOS)
 - Layout responsivo com BottomBar mobile
+- Commit realizado: git status limpo
 
+➡️  Planner verifica git status antes de chamar Sentinel
 ➡️  Sentinel valida integração frontend ↔ backend
 ```
 

@@ -298,15 +298,38 @@ exec gunicorn config.wsgi:application \
 
 ## Passagem de bastão
 
+### COMMIT OBRIGATÓRIO antes de retornar ao Planner
+
+```bash
+# Verificar o que foi alterado
+git status
+git diff --stat
+
+# Adicionar TODOS os arquivos alterados e criados
+git add backend/  # ou os caminhos especificos
+
+# Commitar com mensagem descritiva
+git commit -m "feat/fix: [descricao das mudancas]"
+
+# Confirmar que nao ha nada pendente
+git status  # deve mostrar: nothing to commit, working tree clean
 ```
-✅ Backend implementado — {nome_sistema}
+
+> **SEM COMMIT = o Sentinel nao vera as mudancas = esteira quebrada.**
+> **SEM COMMIT = migration nao existe no repo = deploy falha.**
+> **O commit e parte da entrega — nao e opcional.**
+
+```
+✅ Backend implementado e commitado — {nome_sistema}
 
 Entregáveis:
 - {N} models implementados e migrados
 - {N} endpoints funcionais
 - {N} testes passando ({financeiro: X, operacional: Y, técnico: Z})
+- Commit realizado: git status limpo
 
-➡️  Loom finaliza o frontend
+➡️  Loom finaliza o frontend (em paralelo)
+➡️  Planner verifica git status antes de chamar Sentinel
 ➡️  Sentinel roda suite completa de testes
 ```
 

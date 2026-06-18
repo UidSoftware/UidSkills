@@ -26,7 +26,7 @@ description: >
 
 ```
 1. LER o CLAUDE.md do projeto informado
-2. CHAMAR o Planner via Agent tool ou Workflow tool
+2. CHAMAR o Planner via Workflow tool ou TaskCreate — NUNCA via Agent tool
 3. AGUARDAR — não fazer mais nada
 ```
 
@@ -90,7 +90,26 @@ Isso é tudo. Não há Etapa 2 para o Hotfix.
 
 ## Etapa 2 — Delegação ao Planner (OBRIGATÓRIA SEMPRE)
 
-### No Claw Empire — usar Workflow tool:
+### ⛔ POR QUE NUNCA USAR O Agent tool PARA CHAMAR O PLANNER
+
+O `Agent tool` cria um subagente local sem acesso às ferramentas do Empire
+(TaskCreate, Workflow, TaskGet, etc.).
+
+Se você chamar o Planner via `Agent tool`:
+- O Planner **não consegue criar tasks** para Forge, Loom, Sentinel e Pilot
+- O Planner implementa tudo sozinho sem chamar ninguém
+- Forge e Loom nunca rodam → ninguém commita o código
+- Sentinel e Pilot nunca são criados → nenhum deploy acontece
+- A esteira quebra silenciosamente — a task vai para "review" e trava
+
+```
+NUNCA: Agent(subagent_type="claude",   prompt="...")
+NUNCA: Agent(subagent_type="planner",  prompt="...")
+NUNCA: Agent(subagent_type="Planner",  prompt="...")
+O Agent tool nao e um fallback — e um bypass que quebra a esteira.
+```
+
+### 1a tentativa — Workflow tool (cria task Empire completa):
 
 ```
 Workflow(
@@ -99,16 +118,7 @@ Workflow(
 )
 ```
 
-### Fallback — Agent tool:
-
-```
-Agent(
-  subagent_type: "planner",
-  prompt: "MANUTENCAO | Projeto: [nome] | CLAUDE.md: [caminho] | Tarefas: [lista exata recebida]"
-)
-```
-
-### Fallback 2 — TaskCreate tool:
+### 2a tentativa — TaskCreate (se Workflow falhar):
 
 ```
 TaskCreate(
@@ -118,8 +128,8 @@ TaskCreate(
 )
 ```
 
-> **USE O PRIMEIRO MECANISMO QUE FUNCIONAR.**
-> **SE TODOS FALHAREM → VER SEÇÃO "FALLBACK DE EMERGÊNCIA" ABAIXO.**
+> **SE WORKFLOW E TASKCREATE FALHAREM: ver secao FALLBACK DE EMERGENCIA abaixo.**
+> **NAO HA TERCEIRA TENTATIVA. Agent tool nunca e opcao.**
 
 ---
 
@@ -182,7 +192,7 @@ TaskCreate(
 
 ✅ SEMPRE ler o CLAUDE.md
 ✅ SEMPRE passar a lista de tarefas INTACTA ao Planner
-✅ SEMPRE usar Workflow → Agent → TaskCreate (nessa ordem de tentativa)
+✅ SEMPRE usar Workflow → TaskCreate (nessa ordem) — NUNCA Agent tool
 ✅ SEMPRE reportar falha de delegação ao usuário e PARAR
 ✅ SEMPRE seguir: Hotfix → Planner → Forge+Loom → Sentinel → Pilot
 ```
@@ -195,7 +205,7 @@ TaskCreate(
 ⚠️ Tarefa parece simples → PLANNER
 ⚠️ Emergência / sistema fora do ar → PLANNER (ou escalar para Luiz Eduardo)
 ⚠️ Planner não responde → Reportar ao usuário, NÃO executar
-⚠️ Workflow/Agent falha → TaskCreate, se falhar → Reportar ao usuário
+⚠️ Workflow falha → TaskCreate, se falhar → PARAR e reportar ao usuário
 ⚠️ Escopo cresceu → PLANNER
 ⚠️ "Só preciso criar uma migration" → PLANNER
 ⚠️ "É só um model" → PLANNER
