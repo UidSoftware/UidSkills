@@ -286,7 +286,7 @@ Pipeline rodado com sucesso no **Studio Fluir** (2026-06-04/05):
 | Sentinel | `sentinel.md` | ✅ Estável |
 | Pilot | `pilot.md` | ✅ Estável |
 | Hotfix | `hotfix.md` | ✅ Restrições explícitas adicionadas |
-| HotfixSKILL | `HotfixSKILL.md` | ✅ Nova — criada neste ciclo |
+| HotfixSKILL | `HotfixSKILL.md` | ✅ Atualizada 2026-06-18 — Agent tool removido do fallback |
 
 #### Próximos passos
 
@@ -300,6 +300,40 @@ Pipeline rodado com sucesso no **Studio Fluir** (2026-06-04/05):
 ⬜ Testar pipeline completo com novo cliente (projeto fictício salão de beleza)
 ⬜ Criar templates de projeto por segmento (saúde, salão, agro, loja)
 ```
+
+---
+
+### [2026-06-18] — Fix crítico: Agent tool bypassa Empire no pipeline hotfix
+
+**Problema diagnosticado:** task `9d265c44` ("Cadastrar manutenção — SystemD") ficou em
+`status=review` sem Sentinel nem Pilot terem rodado. Causa raiz: `HotfixSKILL` usava
+`Agent tool` como fallback para chamar o Planner. O `Agent tool` cria um subagente local
+**sem acesso às ferramentas do Empire** (TaskCreate, Workflow) — então o Planner não
+conseguia criar tasks para Forge, Loom, Sentinel e Pilot, e implementava tudo sozinho,
+sem commitar. Resultado: código ficou solto no worktree, sem validação, sem deploy.
+
+**Regra crítica aprendida:**
+
+```
+Agent tool    → subagente local (sem TaskCreate/Workflow/ferramentas Empire)
+Workflow/TaskCreate → task Empire real (worktree isolado + ferramentas completas)
+
+Forge e Loom  → Agent tool OK (implementam código no worktree atual do Planner)
+Sentinel/Pilot → OBRIGATÓRIO TaskCreate (precisam de worktree isolado no Empire)
+Commit        → OBRIGATÓRIO entre Loom e Sentinel (sem commit = Sentinel vê vazio)
+```
+
+**Correções aplicadas:**
+
+| Arquivo | Mudança |
+|---|---|
+| `HotfixSKILL.md` | `Agent tool` **removido** da cadeia — agora: Workflow → TaskCreate → PARAR |
+| `PlannerSKILL.md` | Seção **MODO HOTFIX** adicionada: pipeline abreviado + commit obrigatório + Sentinel/Pilot via TaskCreate |
+| `ForgeSKILL.md` | **Commit obrigatório** adicionado na Passagem de bastão (git add + git commit + verificação git status) |
+| `LoomSKILL.md` | **Commit obrigatório** adicionado na Passagem de bastão |
+| Planner (banco Empire) | Personalidade atualizada com MODO HOTFIX e commit obrigatório |
+
+**Commit:** `5f32cd4` — fix(skills): corrige esteira hotfix
 
 ---
 
