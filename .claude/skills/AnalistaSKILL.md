@@ -993,6 +993,140 @@ Ao finalizar, informe:
 ➡️  Próximo passo: rodar doc-generator com esses arquivos
 ```
 
+
+---
+
+## MODO HOTFIX — Análise de Mudança em Sistema Existente
+
+> Quando chamado pelo Planner dentro do pipeline de manutenção, o Analista
+> NÃO conduz entrevista com o cliente e NÃO gera Levantamento_Requisitos.md.
+> O sistema já existe. A tarefa é analisar o pedido de mudança com profundidade
+> e produzir uma especificação detalhada para Forge e Loom implementarem.
+
+### Como reconhecer o MODO HOTFIX
+
+O Planner passa na descrição da task:
+```
+MODO MANUTENCAO BANCO
+Sistema: [nome]
+Tarefa: [descrição do pedido]
+```
+
+Ou menciona explicitamente: "analyze o pedido e gere Especificacao_Hotfix.md".
+
+### O que fazer no MODO HOTFIX
+
+**Passo 1 — Ler o contexto do sistema:**
+- Ler o CLAUDE.md do projeto (caminho informado pelo Planner)
+- Ler 2–3 pages/componentes existentes similares ao que será implementado
+  (para entender padrões visuais, nomenclatura, estrutura de dados)
+- Ler os models/serializers relevantes do backend
+
+**Passo 2 — Decompor o pedido:**
+
+Analisar o pedido como um desenvolvedor sênior faria. Para cada item solicitado,
+especificar tudo que Forge e Loom precisam saber — sem lacunas, sem ambiguidades.
+
+**Passo 3 — Produzir `Especificacao_Hotfix.md` no worktree com:**
+
+```markdown
+# Especificação Hotfix — {nome_sistema}
+Data: {data}
+Pedido original: {descricao_resumida}
+
+## 1. Requisitos Funcionais
+RF-01: [o que o sistema deve fazer — verbo + objeto + condição]
+RF-02: ...
+(listar TODOS, sem resumir)
+
+## 2. Regras de Negócio
+RN-01: [condição/validação/restrição explícita]
+Ex: "itens com status PAGO não aparecem em Contas a Pagar"
+Ex: "cards ordenados do mês mais recente para o mais antigo"
+Ex: "total do mês soma apenas valor_liquido dos itens do card"
+
+## 3. Telas / Pages
+
+### [NomeDaPage]
+- Propósito: o que o usuário vê e faz aqui
+- Rota: /sistema/[modulo]/[rota]
+- Acesso: quem pode ver (ADMIN, cliente, todos)
+- Dados: model + endpoint que alimenta
+- Agrupamento: como os itens são organizados (ex: por mês de pagamento)
+- Ordenação: decrescente por data, etc.
+- Filtros disponíveis:
+    - [campo]: tipo date-range | select | text — label exibido
+- Cards / linhas: quais campos mostrar em cada item
+- Totalizadores: total por grupo, total geral
+- Botões e ações:
+    [ícone Lucide] Label — o que faz ao clicar
+    Ex: [Plus] Nova Despesa → abre modal de criação
+    Ex: [FileDown] Exportar → baixa CSV dos itens filtrados
+- Estado vazio: texto/ícone quando não há dados
+- Mobile: comportamento em 375px (stack vertical, cards em coluna)
+
+## 4. Modificações em Telas Existentes
+### [NomeDaPageExistente]
+- O que muda: [descrição exata]
+- Motivo: [regra de negócio que justifica]
+
+## 5. Especificação Backend (para Forge)
+- Models afetados: [Model] — campos lidos/alterados
+- Novos endpoints:
+    GET /api/[rota]/ — params: [lista], response: [campos]
+- Endpoints modificados:
+    GET /api/[rota]/ — adicionar filtro por [campo]
+- Lógica de queryset:
+    Ex: .filter(status__in=['PENDENTE', 'ATRASADO'])
+    Ex: .select_related('cliente').order_by('-data_vencimento')
+- Serializers: campos novos ou read_only
+
+## 6. Especificação Frontend (para Loom)
+- Novas pages: [NomePage.jsx] → [caminho/completo/]
+- Pages modificadas: [NomePage.jsx] — mudança específica
+- Novos serviços de API: método em [nomeApi].js
+    Ex: listarDespesasPagas(params) → GET /api/despesas/?status=PAGO
+- Rotas em App.jsx:
+    path="/sistema/[rota]" element={<PrivateRoute><NomePage /></PrivateRoute>}
+- Menu/Sidebar: novo item em [seção]
+    ícone: [NomeIconeLucide], label: "[Label]", rota: "/sistema/[rota]"
+- Lógica de estado:
+    Ex: agrupar por item.pagamento.slice(0,7) → Object.keys().sort().reverse()
+    Ex: totalMes = itens.reduce((acc, i) => acc + parseFloat(i.valor), 0)
+
+## 7. Casos de Borda
+- [situação] → [comportamento esperado]
+Ex: item sem data de pagamento → não aparece na página de Despesas Pagas
+Ex: mês sem movimentação → card não aparece (lista vazia não exibe card)
+Ex: valor null/undefined → tratar como 0 no totalMes
+```
+
+### O que NÃO fazer no MODO HOTFIX
+
+```
+❌ NÃO gerar Levantamento_Requisitos.md
+❌ NÃO gerar diagramas UML
+❌ NÃO chamar doc-generator
+❌ NÃO entrevistar o cliente
+❌ NÃO implementar código (isso é Forge + Loom)
+❌ NÃO deixar lacunas — se o pedido for vago, inferir com base nas pages existentes
+```
+
+### Passagem de bastão (MODO HOTFIX)
+
+Ao finalizar, informar ao Planner:
+
+```
+✅ Especificação concluída — {nome_sistema}
+   RF: X requisitos funcionais
+   RN: Y regras de negócio
+   Telas: Z (N novas, M modificadas)
+
+📁 Arquivo: Especificacao_Hotfix.md (no worktree)
+
+➡️ Próximo passo: Forge (backend) + Loom (frontend) em paralelo
+```
+
 ---
 
 > Esta skill é parte da linha de produção da Uid Software.

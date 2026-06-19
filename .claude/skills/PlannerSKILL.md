@@ -128,21 +128,25 @@ Lead + Entrevista + ArquiteturaTecnica no banco (MCP)
 ## MODO HOTFIX — Pipeline Abreviado
 
 Quando chamado pelo Hotfix (manutenção de sistema existente em produção),
-o Planner pula Analista, doc-generator, Blueprint e Brush.
-O sistema já existe — a arquitetura já está definida.
+o Planner pula doc-generator, Blueprint e Brush.
+O Analista ENTRA no fluxo — mas em modo hotfix (análise de mudança, não projeto novo).
 
 ```
 Hotfix recebido → Planner entra aqui
         ↓
-[PLANNER] le CLAUDE.md + arquivos relevantes
+[PLANNER] le CLAUDE.md + arquivos relevantes do projeto
         ↓
-[FORGE] via Agent tool (backend — se houver mudancas)
-[LOOM]  via Agent tool (frontend — se houver mudancas)
+[ANALISTA] via Agent tool — MODO HOTFIX
+   Lê o contexto, decompõe o pedido, gera Especificacao_Hotfix.md
+   (RF, RN, telas com filtros/botões/ícones, spec backend, spec frontend)
+        ↓
+[FORGE] via Agent tool — lê Especificacao_Hotfix.md (backend)
+[LOOM]  via Agent tool — lê Especificacao_Hotfix.md (frontend)
    ambos em PARALELO
         ↓
 COMMIT OBRIGATORIO — verificar antes de continuar:
    git status → deve mostrar "nothing to commit, working tree clean"
-   Se houver arquivos sao commitados: git add + git commit AGORA
+   Se houver arquivos nao commitados: git add + git commit AGORA
    SEM COMMIT = Sentinel nao vera as mudancas = esteira quebrada
         ↓
 [SENTINEL] via TaskCreate (nao via Agent tool)
@@ -157,9 +161,10 @@ COMMIT OBRIGATORIO — verificar antes de continuar:
 ### Regras criticas do modo hotfix
 
 ```
-PULAR: Analista, doc-generator, Blueprint, Brush
-NAO PULAR: Forge, Loom, commit, Sentinel, Pilot
+PULAR: doc-generator, Blueprint, Brush
+NAO PULAR: Analista, Forge, Loom, commit, Sentinel, Pilot
 
+ANALISTA → Agent tool (MODO HOTFIX — gera Especificacao_Hotfix.md no worktree)
 FORGE e LOOM → Agent tool (subagentes locais — implementam no worktree)
 SENTINEL e PILOT → TaskCreate (tasks Empire com worktree proprio)
 
@@ -167,8 +172,45 @@ Por que Sentinel e Pilot precisam de TaskCreate e nao Agent tool?
 Porque precisam de worktree isolado para validar e deployar.
 Se chamados via Agent tool, nao tem acesso ao ambiente de producao.
 
+Por que Analista, Forge e Loom sao Agent tool?
+Porque trabalham no MESMO worktree — compartilham arquivos.
+Analista gera Especificacao_Hotfix.md → Forge e Loom leem esse arquivo.
+
 COMMIT entre Loom e Sentinel e OBRIGATORIO.
 Sem commit: Sentinel ve worktree vazio, aprova sem validar nada.
+```
+
+### Como passar o pedido ao Analista (MODO HOTFIX)
+
+```python
+Agent(
+  subagent_type="analista",
+  prompt=f"""
+MODO HOTFIX — analise o pedido e gere Especificacao_Hotfix.md no worktree.
+
+Sistema: {nome_sistema}
+CLAUDE.md: {caminho}/CLAUDE.md
+Caminho do projeto: {caminho}
+
+Pedido:
+{descricao_da_manutencao}
+
+Instrucoes:
+1. Ler o CLAUDE.md do projeto
+2. Ler 2-3 pages/models existentes similares ao que sera implementado
+3. Decompor o pedido em RF, RN, telas detalhadas, spec backend, spec frontend
+4. Salvar Especificacao_Hotfix.md no worktree
+5. Avisar quando concluir
+  """
+)
+```
+
+### Como passar a spec para Forge e Loom
+
+Forge e Loom devem receber no prompt:
+```
+Leia Especificacao_Hotfix.md no worktree antes de implementar.
+Implemente apenas a parte de [backend|frontend] conforme a spec.
 ```
 
 ### 0. Pré-voo: uso do Claude
