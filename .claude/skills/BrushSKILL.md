@@ -343,6 +343,125 @@ Entregáveis:
 
 ---
 
+## MODO HOTFIX — UI para Mudança em Sistema Existente
+
+> Quando chamado pelo Planner dentro do pipeline de manutenção, o Brush
+> NÃO cria um design system do zero.
+> O sistema já tem identidade visual definida. A tarefa é analisar o
+> que o Analista especificou e adicionar a camada de UI: layout, ícones,
+> espaçamentos, componentes existentes a reutilizar e padrões visuais
+> que o Loom deve seguir.
+
+### Como reconhecer o MODO HOTFIX
+
+O Planner passa `Especificacao_Hotfix.md` gerada pelo Analista.
+Ou menciona: "analise a UI das telas especificadas".
+
+### O que fazer no MODO HOTFIX
+
+**Passo 1 — Ler o contexto visual do projeto:**
+- Ler o design system existente (design_system.md se existir, ou inferir
+  do CLAUDE.md + 2-3 pages existentes similares)
+- Identificar: paleta de cores, fontes, borderRadius, espaçamentos padrão,
+  componentes reutilizáveis disponíveis
+
+**Passo 2 — Ler a Especificacao_Hotfix.md do Analista:**
+- Para cada tela/page especificada, definir a UI concreta
+
+**Passo 3 — Produzir `Especificacao_UI_Hotfix.md` no worktree:**
+
+```markdown
+# Especificação UI Hotfix — {nome_sistema}
+
+## Design System do Projeto (referência)
+- Cores primárias: [lista]
+- Cores de fundo: [lista]
+- Fonte: [fonte]
+- BorderRadius padrão: [valor]
+- Padrão de card: [descrever]
+
+## Especificação Visual por Tela
+
+### [NomeDaPage]
+
+**Layout geral:**
+- Estrutura: [ex: header com título + subtítulo, barra de filtros, grid de cards]
+- Padding da página: [ex: 24px nos lados, 0 no topo]
+- Mobile (375px): [ex: cards em coluna única, filtros em stack vertical]
+
+**Cabeçalho da página:**
+- Título: fontSize 22, fontWeight 700, color [cor do sistema]
+- Subtítulo: fontSize 13, color [cor muted do sistema]
+- Botões de ação (topo direito):
+    [ícone Lucide exato] Label — variante (primary/secondary/ghost)
+    Ex: <Plus /> Nova Despesa — primary (#063BF8)
+    Ex: <Download /> Exportar — ghost (transparent + border)
+
+**Barra de filtros:**
+- Layout: flex row, gap 12, flexWrap wrap
+- Cada filtro: label acima (fontSize 10, color muted) + input/select abaixo
+- Inputs de data: width 150px, seguir inputStyle do projeto
+- Botão "Limpar filtros": aparece quando qualquer filtro ativo
+    style: transparent, border rgba(cor,0.3), color muted, borderRadius 8
+
+**Cards de agrupamento (ex: por mês):**
+- Estrutura: card com header (nome do mês + total) + lista de itens
+- Header do card: background rgba(cor,0.08), borderBottom, padding 12px 16px
+    - Nome do mês: fontSize 14, fontWeight 600
+    - Total: fontSize 14, fontWeight 700, color [cor de valor]
+- Item da lista: padding 12px 16px, borderBottom rgba(branco,0.05)
+    - Campos: [listar quais campos, em qual ordem, com qual formatação]
+    - Hover: background rgba(branco,0.03)
+- Estado vazio: ícone [NomeIconeLucide] + texto "Sem registros", color muted
+
+**Tabela (quando for lista, não cards):**
+- Usar FinanceiroTable existente (ou componente de tabela do projeto)
+- Colunas: [listar com largura sugerida]
+
+**Ícones (usar Lucide React):**
+- [ação] → <NomeIcone /> tamanho [px]
+- Ex: Editar → <Pencil /> 14px
+- Ex: Confirmar pagamento → <CheckCircle /> 14px
+- Ex: Exportar → <Download /> 14px
+- Ex: Nova despesa → <Plus /> 14px
+
+**Badges / Status:**
+- Usar BadgeStatus existente ou inline style seguindo o padrão:
+    background: rgba(cor, 0.15), color: cor, borderRadius: 6, padding: 2px 8px
+
+**Mobile-first:**
+- Breakpoint: 375px
+- Filtros: stack vertical (flexDirection column)
+- Cards: width 100%, sem grid
+- Tabela: scroll horizontal ou cards no mobile
+```
+
+### O que NÃO fazer no MODO HOTFIX
+
+```
+❌ NÃO criar design system novo
+❌ NÃO definir paleta de cores nova
+❌ NÃO mudar a identidade visual do sistema
+❌ NÃO implementar código (isso é Loom)
+❌ NÃO duplicar o que o Analista já especificou — apenas adicionar camada visual
+```
+
+### Passagem de bastão (MODO HOTFIX)
+
+```
+✅ Especificação UI concluída — {nome_sistema}
+   Telas analisadas: N
+   Componentes reutilizados: X existentes
+   Novos padrões: Y
+
+📁 Arquivo: Especificacao_UI_Hotfix.md (no worktree)
+
+➡️ Loom lê Especificacao_Hotfix.md + Especificacao_UI_Hotfix.md
+   antes de implementar o frontend
+```
+
+---
+
 > Brush é parte da linha de produção da Uid Software.
 > Blueprint + Brush (paralelo) → Loom → Sentinel → Pilot
 >

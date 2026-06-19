@@ -140,8 +140,13 @@ Hotfix recebido → Planner entra aqui
    Lê o contexto, decompõe o pedido, gera Especificacao_Hotfix.md
    (RF, RN, telas com filtros/botões/ícones, spec backend, spec frontend)
         ↓
+[BRUSH] via Agent tool — MODO HOTFIX
+   Lê Especificacao_Hotfix.md, analisa UI de cada tela
+   Gera Especificacao_UI_Hotfix.md
+   (layout, ícones Lucide, espaçamentos, componentes existentes, mobile)
+        ↓
 [FORGE] via Agent tool — lê Especificacao_Hotfix.md (backend)
-[LOOM]  via Agent tool — lê Especificacao_Hotfix.md (frontend)
+[LOOM]  via Agent tool — lê Especificacao_Hotfix.md + Especificacao_UI_Hotfix.md (frontend)
    ambos em PARALELO
         ↓
 COMMIT OBRIGATORIO — verificar antes de continuar:
@@ -165,6 +170,7 @@ PULAR: doc-generator, Blueprint, Brush
 NAO PULAR: Analista, Forge, Loom, commit, Sentinel, Pilot
 
 ANALISTA → Agent tool (MODO HOTFIX — gera Especificacao_Hotfix.md no worktree)
+BRUSH   → Agent tool (MODO HOTFIX — gera Especificacao_UI_Hotfix.md no worktree)
 FORGE e LOOM → Agent tool (subagentes locais — implementam no worktree)
 SENTINEL e PILOT → TaskCreate (tasks Empire com worktree proprio)
 
@@ -172,9 +178,10 @@ Por que Sentinel e Pilot precisam de TaskCreate e nao Agent tool?
 Porque precisam de worktree isolado para validar e deployar.
 Se chamados via Agent tool, nao tem acesso ao ambiente de producao.
 
-Por que Analista, Forge e Loom sao Agent tool?
+Por que Analista, Brush, Forge e Loom sao Agent tool?
 Porque trabalham no MESMO worktree — compartilham arquivos.
-Analista gera Especificacao_Hotfix.md → Forge e Loom leem esse arquivo.
+Analista gera Especificacao_Hotfix.md → Brush lê e gera Especificacao_UI_Hotfix.md
+→ Forge lê spec funcional, Loom lê spec funcional + spec UI.
 
 COMMIT entre Loom e Sentinel e OBRIGATORIO.
 Sem commit: Sentinel ve worktree vazio, aprova sem validar nada.
@@ -205,12 +212,37 @@ Instrucoes:
 )
 ```
 
-### Como passar a spec para Forge e Loom
+### Como chamar o Brush (MODO HOTFIX)
 
-Forge e Loom devem receber no prompt:
+```python
+Agent(
+  subagent_type="brush",
+  prompt="""
+MODO HOTFIX — analise a UI das telas especificadas e gere Especificacao_UI_Hotfix.md.
+
+Sistema: {nome_sistema}
+CLAUDE.md: {caminho}/CLAUDE.md
+
+Leia Especificacao_Hotfix.md no worktree (gerada pelo Analista).
+Para cada tela especificada, defina: layout, icones Lucide, espacamentos,
+componentes existentes a reutilizar, padroes mobile-first.
+Salve Especificacao_UI_Hotfix.md no worktree ao finalizar.
+  """
+)
+```
+
+### Como passar as specs para Forge e Loom
+
+Forge recebe no prompt:
 ```
 Leia Especificacao_Hotfix.md no worktree antes de implementar.
-Implemente apenas a parte de [backend|frontend] conforme a spec.
+Implemente apenas o backend conforme a spec funcional.
+```
+
+Loom recebe no prompt:
+```
+Leia Especificacao_Hotfix.md e Especificacao_UI_Hotfix.md no worktree antes de implementar.
+Implemente o frontend seguindo a spec funcional E a spec de UI.
 ```
 
 ### 0. Pré-voo: uso do Claude
