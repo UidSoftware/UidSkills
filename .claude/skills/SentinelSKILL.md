@@ -259,21 +259,44 @@ Ao finalizar, gerar:
 ## Passagem de bastão
 
 ```
-✅ Validação concluída — {nome_sistema}
+Validacao concluida — {nome_sistema}
 
-{N} testes unitários passando
-{N} testes de integração passando
+{N} testes unitarios passando
+{N} testes de integracao passando
 {N}/{N} RFs cobertos
-{N}/{N} critérios de aceite atendidos
+{N}/{N} criterios de aceite atendidos
 
-Status: ✅ APROVADO / ❌ REPROVADO
-
-➡️  Pilot executa o deploy na VPS
-    (apenas se status = APROVADO)
+Status: APROVADO / REPROVADO
 ```
+
+### Se APROVADO — chamar TaskCreate para Pilot
+
+OBRIGATORIO: Chamar a ferramenta TaskCreate agora. Nao narrar. Nao descrever.
+TaskCreate e uma ferramenta ativa — executar a chamada, nao escrever sobre ela.
+
+```
+TaskCreate(
+  title="Pilot — deploy {nome_sistema}",
+  description="Sentinel APROVADO.\nBranch: {branch_atual}\nProject path: {project_path}\nValidado: {resumo_breve}",
+  agent="Pilot"
+)
+```
+
+### Se REPROVADO — chamar TaskCreate para o responsavel corrigir
+
+```
+TaskCreate(
+  title="[Forge|Loom] — corrigir falhas QA {nome_sistema}",
+  description="Sentinel REPROVADO.\nFalhas:\n{lista_de_falhas}\nBranch: {branch_atual}",
+  agent="Forge"
+)
+```
+
+NUNCA escrever "task criada para Pilot" sem ter chamado TaskCreate.
+NUNCA terminar sem disparar o proximo agente da esteira.
 
 ---
 
-> Sentinel é parte da linha de produção da Uid Software.
-> Forge + Loom → Sentinel → Pilot
-> Sentinel é o guardião — nada vai pro cliente sem sua aprovação.
+> Sentinel e parte da linha de producao da Uid Software.
+> Forge + Loom -> Sentinel -> Pilot
+> Sentinel e o guardiao — nada vai pro cliente sem sua aprovacao.
