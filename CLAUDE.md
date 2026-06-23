@@ -62,6 +62,11 @@ SISTEMA EM PRODUÇÃO → MENSALIDADE NA CONTA 💰
 ```
 UidSkills/
 ├── CLAUDE.md                        ← este arquivo
+├── automation/                      ← scripts de automação do host VPS
+│   ├── disparar_planner.py          ← cron 4h — detecta lead pronto e cria task Planner
+│   ├── disparar_hotfix.py           ← cron 4h — detecta manutenção pendente e cria task Hotfix
+│   ├── retomar_agente.py            ← cron 30min — retoma tasks paradas por token limit
+│   └── sync_skills.py               ← cron 15min — git pull → sincroniza skills no Empire
 └── .claude/
     └── skills/                      ← skills carregadas pelo Claude Code
         ├── PlannerSKILL.md          ← Lead Agent + Gerente de Projeto
@@ -218,6 +223,34 @@ claude
 
 ---
 
+## Automação da Fábrica
+
+Os scripts em `automation/` rodam no host da VPS (`/opt/uid-automation/`) via cron.
+São versionados aqui para que qualquer clone do repositório tenha a infraestrutura completa.
+
+| Script | Cron | Função |
+|---|---|---|
+| `disparar_planner.py` | `0 */4 * * *` | Detecta `PRONTO_PARA_PLANNER` no SystemD e cria task para o Planner no Empire |
+| `disparar_hotfix.py` | `0 */4 * * *` | Detecta manutenções `pendente` no SystemD e cria task para o Hotfix |
+| `retomar_agente.py` | `*/30 * * * *` | Detecta tasks `in_progress` paradas há 25 min e cria retomada (máx. 5 por cadeia) |
+| `sync_skills.py` | `*/15 * * * *` | `git pull` neste repo e copia skills alteradas para `/app/data/custom-skills/` no Empire |
+
+**Fluxo do sync_skills:**
+1. `git pull origin main` em `/opt/uid-skills`
+2. Para cada `*.md` em `.claude/skills/`: deriva canonical name via frontmatter `name:`
+3. Se o conteúdo mudou: `docker cp` para o container + atualiza `meta.json`
+4. Qualquer `git push` neste repo propaga para o Empire em até 15 minutos
+
+```bash
+# Forçar sincronização imediata (sem esperar cron)
+FORCE=1 python3 /opt/uid-automation/sync_skills.py
+
+# Logs
+tail -f /opt/uid-automation/sync_skills.log
+```
+
+---
+
 ## Contatos Uid Software
 
 ```
@@ -303,6 +336,27 @@ Pipeline rodado com sucesso no **Studio Fluir** (2026-06-04/05):
 
 ---
 
+### [2026-06-22/23] — Pasta automation/ + fix SentinelSKILL TaskCreate
+
+**`automation/` adicionada ao repositório (commit `cf3230f`):**
+- `disparar_planner.py`, `disparar_hotfix.py`, `retomar_agente.py`, `sync_skills.py`
+- Scripts antes existiam apenas em `/opt/uid-automation/` na VPS (sem versionamento)
+
+**`sync_skills.py` criado:**
+- Automatiza a sincronização `UidSkills (GitHub) → Empire custom-skills`
+- Cron 15min: `git pull` + `docker cp` das skills alteradas + atualiza `meta.json`
+- Suporta `FORCE=1` para sincronização imediata
+
+**`SentinelSKILL.md` corrigida (commit `53ff281`):**
+- **Bug:** seção "Passagem de bastão" dizia "Pilot executa o deploy" — narrativa, não instrução
+- Sentinel narrava "task criada para Pilot" sem nunca chamar `TaskCreate`
+- **Fix:** instrução explícita `TaskCreate(agent="Pilot")` (APROVADO) e `TaskCreate(agent="Forge/Loom")` (REPROVADO), com alerta: *NUNCA escrever 'task criada' sem ter chamado TaskCreate*
+- Padrão seguido: PlannerSKILL MODO HOTFIX
+
+**Limpeza de worktrees SystemD:**
+- 7 worktrees removidos (6 mergeados em main + 1 residual da task 9d265c44)
+- `e128e7ee-1` (EntrevistaPage) rebased em main, Sentinel aprovado, Pilot deployou
+
 ### [2026-06-18] — Fix crítico: Agent tool bypassa Empire no pipeline hotfix
 
 **Problema diagnosticado:** task `9d265c44` ("Cadastrar manutenção — SystemD") ficou em
@@ -343,6 +397,11 @@ Commit        → OBRIGATÓRIO entre Loom e Sentinel (sem commit = Sentinel vê 
 ⬜ Testar pipeline completo com projeto fictício (salão de beleza)
 ⬜ Ajustar skills baseado nos travamentos encontrados
 ✅ Skills instaladas globalmente em ~/.claude/skills/ (29/05/2026)
+✅ Scripts de automação versionados em automation/ (2026-06-22)
+✅ sync_skills.py — propagação automática GitHub → Empire (2026-06-22)
+✅ SentinelSKILL corrigida — TaskCreate obrigatório na passagem de bastão (2026-06-22)
+⬜ AnalistaSKILL — integrar com MCP PostgreSQL do SystemD (lead real)
+⬜ PlannerSKILL — integrar com MCP PostgreSQL do SystemD
 ⬜ Adicionar n8n ao pipeline (notificações WhatsApp + email)
 ⬜ Criar templates por segmento (saúde, salão, loja, agro...)
 ⬜ Versionamento das skills (tag por projeto executado com sucesso)
