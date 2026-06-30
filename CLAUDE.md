@@ -262,6 +262,7 @@ São versionados aqui para que qualquer clone do repositório tenha a infraestru
 | `disparar_hotfix.py` | `0 */4 * * *` | Detecta manutenções `pendente` no SystemD e cria task para o Hotfix |
 | `retomar_agente.py` | `*/30 * * * *` | Detecta tasks `in_progress` paradas há 25 min e cria retomada (máx. 5 por cadeia) |
 | `sync_skills.py` | `*/15 * * * *` | `git pull` neste repo e copia skills alteradas para `/app/data/custom-skills/` no Empire |
+| `generate_agents.py` | manual / pós-merge | `git pull` + gera/atualiza `/root/.claude/agents/*.md` a partir das skills |
 
 **Fluxo do sync_skills:**
 1. `git pull origin main` em `/opt/uid-skills`
@@ -269,9 +270,18 @@ São versionados aqui para que qualquer clone do repositório tenha a infraestru
 3. Se o conteúdo mudou: `docker cp` para o container + atualiza `meta.json`
 4. Qualquer `git push` neste repo propaga para o Empire em até 15 minutos
 
+**Fluxo do generate_agents:**
+1. `git pull origin main` em `/opt/uid-skills`
+2. Para cada `*.md` em `.claude/skills/`: extrai `name:` do frontmatter
+3. Cria/atualiza `/root/.claude/agents/{name}.md` com o conteúdo da skill
+4. Skills sem frontmatter `name:` são ignoradas (corrigir o frontmatter da skill)
+
 ```bash
 # Forçar sincronização imediata (sem esperar cron)
 FORCE=1 python3 /opt/uid-automation/sync_skills.py
+
+# Regenerar todos os agents globais (rodar após adicionar nova skill)
+python3 /opt/uid-automation/generate_agents.py
 
 # Logs
 tail -f /opt/uid-automation/sync_skills.log
