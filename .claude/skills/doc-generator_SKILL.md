@@ -1,3 +1,12 @@
+---
+name: doc-generator
+description: >
+  Use esta skill após o Analista concluir o levantamento de requisitos.
+  Gera os 8 documentos estruturais do projeto antes do Blueprint e Brush iniciarem.
+  Dispare quando mencionar: "gerar documentação", "documentos do projeto",
+  "doc-generator", "documentação técnica", "8 documentos".
+---
+
 # SKILL — doc-generator
 > Uid Software — Linha de Produção v2.0
 > Executado por: Claude.ai (chat)
