@@ -113,6 +113,59 @@ Lead + Entrevista + ArquiteturaTecnica no banco (MCP)
 
 ---
 
+## TRIAGEM — O primeiro trabalho do Planner após receber o Analista
+
+O Planner **nunca começa executando**. Ele lê o briefing classificado do Analista
+e decide qual pipeline executar:
+
+```
+Planner recebe briefing classificado do Analista
+                    ↓
+    ┌───────────────┬───────────────┬──────────────────┬──────────────────┐
+    │               │               │                  │                  │
+novo_sistema   bug/melhoria    feature_pequena    feature_grande    adicional
+               melhoria_ux    (sem Blueprint)    ou adicional      _contrato
+    │               │               │              _contrato             │
+Pipeline A    Pipeline B      Pipeline C        Pipeline D         Escalar
+(completo)    (hotfix)        (lite)            (escalar LE)     Luiz Eduardo
+```
+
+**Pipeline A — Novo Sistema (completo)**
+```
+Analista → doc-generator → Blueprint + Brush (paralelo)
+        → Forge + Loom (paralelo) → Sentinel → Pilot
+```
+
+**Pipeline B — Bug / Melhoria UX**
+```
+Forge + Loom (paralelo, briefing direto do Analista) → Sentinel → Pilot
+```
+Sem Blueprint, sem Brush, sem doc-generator.
+
+**Pipeline C — Feature Pequena**
+```
+Blueprint (escopo reduzido, só o delta) → Forge + Loom (paralelo) → Sentinel → Pilot
+```
+
+**Pipeline D — Feature Grande / Adicional de Contrato**
+```
+PARAR → notificar Luiz Eduardo via SystemD (notificacoes_notificacao)
+```
+Requer aprovação comercial antes de qualquer código.
+Só retoma após confirmação explícita de Luiz Eduardo.
+
+**Tipos de notificação do Planner no SystemD:**
+```
+LEAD_PRONTO_PARA_PLANNER  → novo lead qualificado aguardando pipeline
+ARQUITETURA_NECESSARIA    → análise concluída, falta Arquitetura Técnica
+APROVACAO_COMERCIAL       → feature grande / adicional de contrato detectado
+IMPEDIMENTO_PIPELINE      → qualquer bloqueio técnico ou de negócio
+LIMITE_CLAUDE_ATIVO       → uso do Claude > 0 em qualquer janela
+SENTINEL_REPROVADO_2X     → QA reprovou duas vezes, escalar humano
+```
+
+---
+
 ## Aplicação Uid Software (Camada Específica)
 
 > Baseado no pipeline real da Uid e na metodologia

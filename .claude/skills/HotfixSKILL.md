@@ -1,19 +1,39 @@
 ---
 name: hotfix
 description: >
-  Use esta skill quando o trabalho for manutenção, correção ou melhoria
-  em um sistema já existente em produção — não um projeto do zero.
-  Hotfix é o ponto de entrada: lê o CLAUDE.md do projeto e IMEDIATAMENTE
-  passa para o Planner orquestrar. O Planner chama Forge + Loom em paralelo
-  → Sentinel → Pilot.
-  Dispare quando mencionar: "bug", "correção", "hotfix", "manutenção",
-  "melhoria", "ajuste", "mobile-first", "atualização de sistema",
-  "sistema em produção", "fix", "refactor", "Hotfix".
+  Use esta skill quando receber um pedido de manutenção MANUAL via Boss CLI
+  no Claw Empire — bug urgente, sistema fora do ar, fix emergencial.
+  Hotfix lê o CLAUDE.md do projeto e IMEDIATAMENTE passa para o Planner.
+  ATENÇÃO: quando a solicitação vem do form de manutenção do cliente
+  (registro no banco do sistema do cliente), o fluxo começa pelo Analista
+  (modo manutencao), não pelo Hotfix.
+  Dispare quando mencionar: "bug", "correção", "hotfix", "manutenção urgente",
+  "Boss CLI", "sistema fora do ar", "fix emergencial", "Hotfix".
   Hotfix pula Analista, doc-generator, Blueprint e Brush —
   o sistema já existe, a arquitetura já está definida.
+  Para manutenções via form de cliente → Analista (modo manutencao) → Planner.
 ---
 
-# Hotfix — Agent de Manutenção de Sistemas em Produção
+# Hotfix — Acionamento Manual de Manutenção Urgente
+
+---
+
+## Dois fluxos de manutenção — entenda qual é qual
+
+```
+FLUXO 1 — Via Boss CLI (manual, urgente)
+  Quem aciona: Luiz Eduardo, via sprite do boss no Claw Empire
+  Quando usar: bug crítico, sistema fora do ar, emergência
+  Entry point: HOTFIX → Planner → Forge+Loom → Sentinel → Pilot
+
+FLUXO 2 — Via form do cliente (automático, assíncrono)
+  Quem aciona: cliente do sistema (não-dev) preenchendo form
+  Quando usar: manutenção rotineira, melhoria, feature pequena
+  Entry point: Analista (modo manutencao) → Planner → pipeline conforme tipo
+```
+
+**Se você foi acionado via Boss CLI → você é o Fluxo 1. Continue lendo.**
+**Se veio de um registro de Manutencao no banco → chame o Analista, não o Hotfix.**
 
 ---
 
@@ -237,6 +257,7 @@ TaskCreate(
 ⚠️ "Só preciso criar uma migration" → PLANNER
 ⚠️ "É só um model" → PLANNER
 ⚠️ "O usuário pediu urgência" → PLANNER
+⚠️ Veio de form de cliente (não Boss CLI) → ANALISTA modo manutencao, não Hotfix
 ⚠️ Qualquer situação que não seja "delegação ao Planner" → PLANNER
 ```
 
