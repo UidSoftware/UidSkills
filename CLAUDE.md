@@ -1,7 +1,7 @@
 # CLAUDE.md — UidSkills
 > Leia este arquivo SEMPRE antes de qualquer ação.
 > Repositório: github.com/UidSoftware/UidSkills
-> Última atualização: 2026-05-29
+> Última atualização: 2026-06-30
 
 ---
 
@@ -28,19 +28,22 @@ As skills também estão instaladas **globalmente** em `~/.claude/skills/`
 
 ---
 
-## O Pipeline da Fábrica
+## Dois pipelines — como a fábrica funciona
+
+### Pipeline Novo Sistema (lead → produção)
 
 ```
-LEAD NO BANCO (MCP PostgreSQL — vitrine_lead)
+TEXTO DO LEAD/VENDEDOR (banco SystemD via MCP)
         ↓
-   [PLANNER]          ← lê lead via MCP, qualifica, orquestra tudo
+   [ANALISTA] modo novo_sistema / lead_vendedor
+   ← parser universal: extrai RF/RNF do texto de não-dev
+   ← input vago? notifica Luiz Eduardo via banco SystemD
         ↓
-   [ANALISTA]         ← elicita, modela, documenta (Sommerville)
+   [PLANNER] — triagem
+   ← decide qual pipeline executar baseado no tipo do Analista
         ↓
    [ARQUITETURA]      ← Luiz Eduardo preenche no SystemD
                          Office → Novo Projeto → Arquitetura Técnica
-                         Salva em ordens_arquiteturatecnica (banco)
-                         Planner lê via MCP e continua
         ↓
    [DOC-GENERATOR]    ← gera 8 documentos do projeto
         ↓
@@ -53,6 +56,30 @@ LEAD NO BANCO (MCP PostgreSQL — vitrine_lead)
    [PILOT]            ← CI/CD, deploy na VPS, zero SSH manual
         ↓
 SISTEMA EM PRODUÇÃO → MENSALIDADE NA CONTA 💰
+```
+
+### Pipeline Manutenção — dois fluxos
+
+```
+FLUXO 1 — Boss CLI (manual, urgente)
+  Luiz Eduardo clica no sprite do boss no Claw Empire
+        ↓
+   [HOTFIX]  ← lê CLAUDE.md do projeto, delega ao Planner
+        ↓
+   [PLANNER] → Forge + Loom (paralelo) → Sentinel → Pilot
+
+FLUXO 2 — Form do cliente (automático, assíncrono)
+  Cliente não-dev preenche form de manutenção no próprio sistema
+        ↓
+   [ANALISTA] modo manutencao
+   ← classifica: bug | melhoria_ux | feature_pequena | feature_grande | adicional_contrato
+   ← input vago? envia email via Mailcow pedindo clareza
+        ↓
+   [PLANNER] — triagem por tipo:
+   ├── bug / melhoria_ux    → Pipeline B: Forge+Loom direto → Sentinel → Pilot
+   ├── feature_pequena      → Pipeline C: Blueprint lite → Forge+Loom → Sentinel → Pilot
+   └── feature_grande /
+       adicional_contrato   → Pipeline D: PARAR, notificar Luiz Eduardo (aprovação comercial)
 ```
 
 ---
@@ -90,18 +117,19 @@ UidSkills/
 
 | Agent | Skill | Papel | Quando usar |
 |---|---|---|---|
-| Planner | PlannerSKILL.md | Lead Agent + Gerente | Sempre primeiro |
-| Analista | AnalistaSKILL.md | Levantamento de requisitos | Após lead qualificado |
-| Blueprint | BlueprintSKILL.md | Arquiteto | Após doc-generator |
+| Analista | AnalistaSKILL.md | Parser universal de intenção humana | Toda entrada (lead, form, vendedor) |
+| Planner | PlannerSKILL.md | Roteador central + Gerente | Após Analista classificar |
+| Hotfix | HotfixSKILL.md | Entry point manual urgente (Boss CLI) | Bug crítico via Claw Empire |
+| Blueprint | BlueprintSKILL.md | Arquiteto | Após doc-generator (novo sistema) |
 | Brush | BrushSKILL.md | Designer UI/UX | Paralelo ao Blueprint |
-| Forge | ForgeSKILL.md | Dev Backend | Após Blueprint |
+| Forge | ForgeSKILL.md | Dev Backend | Após Blueprint (ou direto no Pipeline B/C) |
 | Loom | LoomSKILL.md | Dev Frontend | Paralelo ao Forge |
 | Sentinel | SentinelSKILL.md | QA | Após Forge + Loom |
 | Pilot | PilotSKILL.md | DevOps | Após Sentinel aprovar |
-| doc-generator | doc-generator_SKILL.md | Gera 8 docs | Após Analista |
+| doc-generator | doc-generator_SKILL.md | Gera 8 docs | Novo sistema, após Analista |
 
-**Skills de suporte (usadas por outros agents):**
-- AnalistaUML.md → consultar ao gerar qualquer diagrama UML
+**Skills de suporte:**
+- AnalistaUML.md → consultar ao gerar qualquer diagrama UML em Mermaid
 
 ---
 
@@ -391,6 +419,38 @@ Commit        → OBRIGATÓRIO entre Loom e Sentinel (sem commit = Sentinel vê 
 
 ---
 
+### [2026-06-30] — Analista 3 modos + Planner roteador + Hotfix dois fluxos
+
+**Motivação:** leads são escritos por vendedores (não-devs) e futuramente clientes
+vão solicitar manutenções via form no próprio sistema deles. O Analista precisa
+funcionar sem entrevista interativa em ambos os casos.
+
+**AnalistaSKILL — parser universal de intenção humana:**
+- `modo novo_sistema` — lê lead do banco (vitrine/vendedor), sem entrevista interativa
+- `modo manutencao` — lê form do cliente, classifica tipo: bug | melhoria_ux | feature_pequena | feature_grande | adicional_contrato
+- `modo lead_vendedor` — briefing do vendedor, avança com lacunas marcadas `[CONFIRMAR]`
+- Input vago (lead) → notifica Luiz Eduardo via `notificacoes_notificacao` no SystemD
+- Input vago (manutenção) → envia email para o cliente via Mailcow
+- Nunca inventa, nunca avança no escuro — para e pede luz
+
+**PlannerSKILL — seção TRIAGEM adicionada:**
+- Recebe briefing classificado do Analista e decide o pipeline:
+  - Pipeline A (novo_sistema completo)
+  - Pipeline B (bug/melhoria_ux → Forge+Loom direto)
+  - Pipeline C (feature_pequena → Blueprint lite)
+  - Pipeline D (feature_grande/contrato → parar, escalar Luiz Eduardo)
+- Tipos de notificação no SystemD documentados
+- Preserva MODO HOTFIX, REGRA FUNDAMENTAL e regras de Agent tool do remote
+
+**HotfixSKILL — dois fluxos distinguidos:**
+- Fluxo 1: Boss CLI (manual, urgente) → Hotfix é o entry point
+- Fluxo 2: form de cliente (automático) → Analista modo manutencao é o entry point, não o Hotfix
+- Edge case adicionado: solicitação via form vai para Analista
+
+**Commit:** `f63a2ce`
+
+---
+
 ## Próximos passos do repositório
 
 ```
@@ -400,8 +460,10 @@ Commit        → OBRIGATÓRIO entre Loom e Sentinel (sem commit = Sentinel vê 
 ✅ Scripts de automação versionados em automation/ (2026-06-22)
 ✅ sync_skills.py — propagação automática GitHub → Empire (2026-06-22)
 ✅ SentinelSKILL corrigida — TaskCreate obrigatório na passagem de bastão (2026-06-22)
-⬜ AnalistaSKILL — integrar com MCP PostgreSQL do SystemD (lead real)
-⬜ PlannerSKILL — integrar com MCP PostgreSQL do SystemD
+✅ AnalistaSKILL — 3 modos: novo_sistema, manutencao, lead_vendedor (2026-06-30)
+✅ PlannerSKILL — triagem com Pipeline A/B/C/D (2026-06-30)
+✅ HotfixSKILL — dois fluxos distinguidos: Boss CLI vs form de cliente (2026-06-30)
+⬜ Implementar disparar_hotfix ligado ao form de manutenção dos sistemas de clientes
 ⬜ Adicionar n8n ao pipeline (notificações WhatsApp + email)
 ⬜ Criar templates por segmento (saúde, salão, loja, agro...)
 ⬜ Versionamento das skills (tag por projeto executado com sucesso)
