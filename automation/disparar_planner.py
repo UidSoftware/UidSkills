@@ -46,7 +46,7 @@ def marcar_resolvido(notificacao_id):
     )
 
 
-def get_or_create_project(env, nome):
+def get_or_create_project(env, nome, core_goal=None):
     """Retorna (project_id, project_path) do Claw Empire, criando o projeto se necessario."""
     project_path = f"/var/www/{nome.lower()}"
 
@@ -63,6 +63,7 @@ def get_or_create_project(env, nome):
         "name": nome,
         "project_path": project_path,
         "github_repo": f"UidSoftware/{nome}",
+        "core_goal": core_goal or f"Projeto {nome} (Uid Software).",
     }
     req = urllib.request.Request(
         f"{env['CLAW_EMPIRE_URL']}/api/projects",
@@ -168,7 +169,7 @@ def main():
         nome = item["projeto"]
         try:
             # 1. Garantir projeto no Empire e git repo no project_path
-            project_id, project_path = get_or_create_project(env, nome)
+            project_id, project_path = get_or_create_project(env, nome, item.get("core_goal"))
             garantir_repo(project_path, nome)
 
             # 2. Criar task com project_id e project_path
