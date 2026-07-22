@@ -1,69 +1,96 @@
 #!/usr/bin/env python3
 """
-Le manutencoes pendentes no SystemD e cria tasks para o Hotfix agent no Claw Empire.
-Idempotente (cron-safe): em caso de erro o item fica pendente para a proxima execucao.
+disparar_hotfix.py — dispara o Hotfix diretamente via Claude Code CLI
+(`--agent hotfix`), sem depender do Claw Empire.
+
+Le Manutencao pendentes no SystemD (via management command
+`disparar_hotfix`) e roda uma sessao `claude --agent hotfix` em background
+por processo, rastreando PID localmente em hotfix_processos.json.
+
+A propria Manutencao (campos disparada_em/feito) e a fonte de verdade do
+estado do "task" — nao existe quadro de tasks separado. O unico dado que
+precisa viver fora do banco e efemero por natureza: o PID do processo em
+execucao agora, guardado em hotfix_processos.json.
+
+Idempotente e cron-safe. Duas fases a cada execucao:
+
+  1. Reconciliacao: para cada manutencao com processo rastreado
+     localmente, confere se o PID ainda esta vivo.
+       - vivo e dentro do timeout        -> deixa rodando, nada a fazer.
+       - vivo e passou do timeout        -> mata o processo (trava/loop
+                                             infinito), conta como falha.
+       - morto e Manutencao.feito=True   -> sucesso confirmado (a propria
+                                             sessao rodou o --concluir no
+                                             final), remove do rastreamento.
+       - morto e Manutencao.feito=False  -> sessao terminou sem concluir;
+                                             incrementa tentativas; se <
+                                             MAX_TENTATIVAS, libera
+                                             (--liberar) para nova tentativa
+                                             no proximo ciclo; se nao,
+                                             deixa travado e loga
+                                             intervencao manual necessaria.
+
+  2. Disparo: para cada Manutencao pendente (--list) que ainda nao tem
+     processo rastreado, monta o prompt (mesmo envelope MODO MANUTENCAO
+     BANCO que o Claw Empire usava) e dispara
+     `claude --agent hotfix -p "..." --permission-mode auto`
+     em background (setsid, log proprio, stdin fechado), marca
+     disparada_em=now() via `--mark-dispatched`, e registra
+     {pid, log, tentativas, iniciado_em} localmente.
 """
 import json
+import os
+import signal
 import subprocess
 import sys
-import urllib.error
-import urllib.request
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 BASE_DIR          = Path(__file__).resolve().parent
+ESTADO_PATH       = BASE_DIR / "hotfix_processos.json"
 SYSTEMD_CONTAINER = "sytemd-backend-1"
-HOTFIX_AGENT_ID   = "690df50c-9839-4519-9f55-92b18a394247"
+TOKEN_PATH        = Path("/root/.claude_oauth_token")
+LOG_DIR           = Path("/root/esteira-logs")
 
-# Mapeamento: caminho no host -> projeto registrado no Empire
-CAMINHO_PARA_PROJETO = {
-    "/root/SystemD": {
-        "project_id":   "7d37906f-9d30-4789-8b7a-f67115951148",
-        "project_path": "/home/app/projects/SytemD",
-        "name":         "SystemD",
-    },
-    "/var/www/studio-fluir": {
-        "project_id":   "6e8e4126-4dc1-4ccd-bed9-c23b2653d2bb",
-        "project_path": "/var/www/studio-fluir",
-        "name":         "Nos Studio Fluir",
-    },
-    "/var/www/contratid": {
-        "project_id":   "d01ee4f5-a74d-4aa2-8a2c-4fb40c54fdec",
-        "project_path": "/var/www/contratid",
-        "name":         "ContratId",
-    },
-    "/opt/claw-empire": {
-        "project_id":   "73e11f87-111b-4038-b112-ebcb924b8055",
-        "project_path": "/opt/claw-empire",
-        "name":         "Claw Empire",
-    },
-    "/opt/uid-skills": {
-        "project_id":   "260f012c-28cc-4fb3-a7a5-b42d464a84d7",
-        "project_path": "/opt/uid-skills",
-        "name":         "UidSkills",
-    },
-    "/opt/uidmail": {
-        "project_id":   "091c723e-409f-4be6-a835-8b0adf46e983",
-        "project_path": "/opt/uidmail",
-        "name":         "UidMail",
-    },
-}
+MAX_TENTATIVAS  = 3
+TIMEOUT_MINUTOS = 120
+MAX_BUDGET_USD  = 15
 
 
-def load_env(path):
-    env = {}
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        env[key.strip()] = value.strip()
-    return env
+def carregar_estado():
+    if not ESTADO_PATH.exists():
+        return {}
+    try:
+        return json.loads(ESTADO_PATH.read_text())
+    except json.JSONDecodeError:
+        print(f"aviso: {ESTADO_PATH} corrompido, recomecando do zero.", file=sys.stderr)
+        return {}
 
 
-def listar_pendentes():
+def salvar_estado(estado):
+    ESTADO_PATH.write_text(json.dumps(estado, indent=2, ensure_ascii=False))
+
+
+def processo_vivo(pid):
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def matar_processo(pid):
+    try:
+        os.killpg(os.getpgid(pid), signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def status_manutencao(manutencao_id):
     resultado = subprocess.run(
-        ["docker", "exec", SYSTEMD_CONTAINER,
-         "python", "manage.py", "disparar_hotfix", "--list"],
+        ["docker", "exec", SYSTEMD_CONTAINER, "python", "manage.py",
+         "disparar_hotfix", "--status", str(manutencao_id)],
         capture_output=True, text=True, check=True,
     )
     return json.loads(resultado.stdout)
@@ -71,71 +98,126 @@ def listar_pendentes():
 
 def marcar_disparada(manutencao_id):
     subprocess.run(
-        ["docker", "exec", SYSTEMD_CONTAINER,
-         "python", "manage.py", "disparar_hotfix",
-         "--mark-dispatched", str(manutencao_id)],
+        ["docker", "exec", SYSTEMD_CONTAINER, "python", "manage.py",
+         "disparar_hotfix", "--mark-dispatched", str(manutencao_id)],
         capture_output=True, text=True, check=True,
     )
 
 
-def criar_task(env, item, projeto):
-    caminho = item["caminho"] or projeto["project_path"]
-    titulo_curto = item["descricao"][:60].rstrip()
-    if len(item["descricao"]) > 60:
-        titulo_curto += "..."
-
-    descricao = (
-        f"MODO MANUTENCAO BANCO\n"
-        f"MANUTENCAO_ID: {item['id']}\n"
-        f"Sistema: {item['os_titulo']} (OS #{item['os_id']})\n"
-        f"Cliente: {item['os_cliente']}\n"
-        f"Caminho: {caminho}\n\n"
-        f"Tarefa:\n{item['descricao']}\n\n"
-        f"CLAUDE.md: {caminho}/CLAUDE.md\n\n"
-        f"INSTRUCAO FINAL (apos Pilot confirmar CI/CD success):\n"
-        f"Marcar manutencao como concluida via MCP PostgreSQL:\n"
-        f"  UPDATE ordens_manutencao SET feito=true, atualizado_em=NOW() WHERE id={item['id']};"
+def liberar_manutencao(manutencao_id):
+    subprocess.run(
+        ["docker", "exec", SYSTEMD_CONTAINER, "python", "manage.py",
+         "disparar_hotfix", "--liberar", str(manutencao_id)],
+        capture_output=True, text=True, check=True,
     )
 
-    payload = {
-        "title":             f"Hotfix — {item['os_titulo']}: {titulo_curto}",
-        "description":       descricao,
-        "department_id":     "operations",
-        "assigned_agent_id": HOTFIX_AGENT_ID,
-        "project_id":        projeto["project_id"],
-        "project_path":      projeto["project_path"],
-    }
-    req = urllib.request.Request(
-        f"{env['CLAW_EMPIRE_URL']}/api/tasks",
-        data=json.dumps(payload).encode("utf-8"),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {env['CLAW_EMPIRE_API_TOKEN']}",
-            "Content-Type": "application/json",
-        },
+
+def listar_pendentes():
+    resultado = subprocess.run(
+        ["docker", "exec", SYSTEMD_CONTAINER, "python", "manage.py",
+         "disparar_hotfix", "--list"],
+        capture_output=True, text=True, check=True,
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read())
-    task = data.get("task") or data
-    return task["id"]
+    return json.loads(resultado.stdout)
 
 
-def executar_task(env, task_id):
-    req = urllib.request.Request(
-        f"{env['CLAW_EMPIRE_URL']}/api/tasks/{task_id}/run",
-        data=b"{}",
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {env['CLAW_EMPIRE_API_TOKEN']}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read())
+def reconciliar(estado):
+    remover = []
+    for manutencao_id, info in estado.items():
+        pid = info["pid"]
+
+        if processo_vivo(pid):
+            iniciado = datetime.fromisoformat(info["iniciado_em"])
+            elapsed_min = (datetime.now(timezone.utc) - iniciado).total_seconds() / 60
+            if elapsed_min < TIMEOUT_MINUTOS:
+                print(f"[RECONCILIA] manutencao #{manutencao_id} ainda rodando (pid={pid}, {elapsed_min:.0f}min).")
+                continue
+            print(f"[RECONCILIA] manutencao #{manutencao_id} passou do timeout ({TIMEOUT_MINUTOS}min) — encerrando pid={pid}.")
+            matar_processo(pid)
+            # cai direto no tratamento de falha abaixo, sem esperar o proximo ciclo
+
+        else:
+            try:
+                status = status_manutencao(manutencao_id)
+            except Exception as exc:
+                print(f"[RECONCILIA] erro ao checar status da manutencao #{manutencao_id}: {exc} — mantendo em andamento.", file=sys.stderr)
+                continue
+
+            if not status.get("encontrada"):
+                print(f"[RECONCILIA] manutencao #{manutencao_id} nao encontrada no banco — removendo do rastreamento.")
+                remover.append(manutencao_id)
+                continue
+
+            if status.get("feito"):
+                print(f"[RECONCILIA] manutencao #{manutencao_id} concluida com sucesso (pid={pid} encerrado).")
+                remover.append(manutencao_id)
+                continue
+
+        info["tentativas"] = info.get("tentativas", 0) + 1
+        if info["tentativas"] < MAX_TENTATIVAS:
+            liberar_manutencao(manutencao_id)
+            print(f"[RECONCILIA] manutencao #{manutencao_id} nao concluiu — liberada para nova tentativa ({info['tentativas']}/{MAX_TENTATIVAS}). Log: {info.get('log')}")
+        else:
+            print(f"[RECONCILIA] manutencao #{manutencao_id} excedeu {MAX_TENTATIVAS} tentativas — intervencao manual necessaria. Log: {info.get('log')}")
+        remover.append(manutencao_id)
+
+    for manutencao_id in remover:
+        estado.pop(manutencao_id, None)
+
+    return estado
+
+
+def montar_prompt(item):
+    return f"""MODO MANUTENCAO BANCO
+MANUTENCAO_ID: {item['id']}
+Sistema: {item['os_titulo']} (OS #{item['os_id']})
+Cliente: {item['os_cliente']}
+Caminho: {item['caminho']}
+
+Tarefa:
+{item['descricao']}
+
+CLAUDE.md: {item['caminho']}/CLAUDE.md
+
+INSTRUCAO FINAL (somente apos Sentinel validar de verdade — subir containers,
+rodar migrate, testar endpoints reais — e Pilot confirmar deploy real em
+producao):
+Marcar manutencao como concluida via Bash:
+  docker exec sytemd-backend-1 python manage.py disparar_hotfix --concluir {item['id']}
+"""
+
+
+def disparar(item):
+    caminho = item["caminho"]
+    if not os.path.isdir(caminho):
+        print(f"[SKIP] manutencao #{item['id']} — caminho nao existe: {caminho}", file=sys.stderr)
+        return None
+
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / f"hotfix-manutencao-{item['id']}-{int(time.time())}.log"
+    prompt = montar_prompt(item)
+    token = TOKEN_PATH.read_text().strip()
+
+    env = os.environ.copy()
+    env["CLAUDE_CODE_OAUTH_TOKEN"] = token
+
+    with open(log_path, "wb") as logfile:
+        proc = subprocess.Popen(
+            ["claude", "--agent", "hotfix", "-p", prompt,
+             "--permission-mode", "auto",
+             "--output-format", "stream-json", "--verbose",
+             "--max-budget-usd", str(MAX_BUDGET_USD)],
+            cwd=caminho,
+            stdout=logfile, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            env=env, start_new_session=True,
+        )
+    return proc.pid, str(log_path)
 
 
 def main():
-    env = load_env(BASE_DIR / ".env")
+    estado = carregar_estado()
+    estado = reconciliar(estado)
+    salvar_estado(estado)
 
     try:
         pendentes = listar_pendentes()
@@ -148,32 +230,29 @@ def main():
         return 0
 
     for item in pendentes:
-        caminho = (item.get("caminho") or "").strip()
-        projeto = CAMINHO_PARA_PROJETO.get(caminho)
-
-        if not projeto:
-            print(
-                f"[SKIP] manutencao #{item['id']} — caminho desconhecido: '{caminho}'. "
-                f"Adicione ao CAMINHO_PARA_PROJETO em {__file__}.",
-                file=sys.stderr,
-            )
+        manutencao_id = str(item["id"])
+        if manutencao_id in estado:
+            print(f"[SKIP] manutencao #{item['id']} ja tem processo em andamento (pid={estado[manutencao_id]['pid']}).")
             continue
 
+        resultado = disparar(item)
+        if resultado is None:
+            continue
+        pid, log_path = resultado
+
         try:
-            task_id = criar_task(env, item, projeto)
-            print(f"task {task_id[:8]}... criada para manutencao #{item['id']} ({item['os_titulo']})")
-
-            resultado = executar_task(env, task_id)
-            pid = resultado.get("pid", "?")
-            print(f"agente iniciado: pid={pid}")
-
             marcar_disparada(item["id"])
-            print(f"manutencao #{item['id']} marcada como disparada.")
-
-        except urllib.error.URLError as exc:
-            print(f"erro de rede para manutencao #{item['id']}: {exc}", file=sys.stderr)
         except Exception as exc:
-            print(f"erro ao processar manutencao #{item['id']}: {exc}", file=sys.stderr)
+            print(f"[AVISO] processo pid={pid} iniciado para manutencao #{item['id']} mas falhou ao marcar disparada: {exc}", file=sys.stderr)
+
+        estado[manutencao_id] = {
+            "pid": pid,
+            "log": log_path,
+            "iniciado_em": datetime.now(timezone.utc).isoformat(),
+            "tentativas": estado.get(manutencao_id, {}).get("tentativas", 0),
+        }
+        salvar_estado(estado)
+        print(f"processo iniciado para manutencao #{item['id']} (pid={pid}), log={log_path}")
 
     return 0
 
