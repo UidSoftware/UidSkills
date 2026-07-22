@@ -51,7 +51,7 @@ FLUXO 2 — Via form do cliente (automático, assíncrono)
 
 ```
 1. LER o CLAUDE.md do projeto informado
-2. CHAMAR o Planner via Agent tool: Agent(subagent_type="planner", prompt="...")
+2. CHAMAR o Planner via Bash (com export do token inline — ver "Etapa 2" abaixo), bloqueante, NUNCA Agent tool
 3. AGUARDAR — não fazer mais nada
 ```
 
@@ -123,7 +123,7 @@ INSTRUCAO FINAL (apos Sentinel validar de verdade e Pilot confirmar deploy real)
 **Neste modo — sem pedir informações ao usuário:**
 
 1. LER o CLAUDE.md no caminho indicado na task description
-2. CHAMAR o Planner via Agent tool com o briefing completo, incluindo `MANUTENCAO_ID`
+2. CHAMAR o Planner via Bash (export do token inline + `claude --agent planner -p "..."`, bloqueante — ver "Etapa 2") com o briefing completo, incluindo `MANUTENCAO_ID`
 3. O `MANUTENCAO_ID` deve ser preservado em todos os handoffs: Hotfix → Planner → Pilot
 4. O Pilot executa o comando `--concluir` via Bash somente depois de confirmar
    o deploy real em produção (não é a mesma sessão do Hotfix/Planner que decide
@@ -144,36 +144,56 @@ Isso é tudo. Não há Etapa 2 para o Hotfix.
 
 ## Etapa 2 — Delegação ao Planner (OBRIGATÓRIA SEMPRE)
 
-### Como delegar ao Planner — Agent tool
+### Como delegar ao Planner — processo novo via Bash (NUNCA Agent tool)
 
 Não existe Claw Empire nem ferramentas próprias dele (`Workflow`, `TaskCreate`
-de task board, `TaskGet`) — a esteira roda direto via Claude Code CLI, sem
-container nem quadro de tasks separado. O mecanismo real de delegação é o
-`Agent tool` nativo, chamando o Planner como subagente:
+de task board, `TaskGet`). **Mas também não use o `Agent tool` nativo para
+isso** — testado na prática e confirmado que não funciona para este caso:
+`Agent tool` cria um SUBAGENTE ANINHADO, e um subagente aninhado não
+consegue, por sua vez, chamar `Agent tool` de novo para spawnar mais
+subagentes (`CLAUDE_CODE_IS_SUBAGENT` nem chega setado dentro dele, e a
+ferramenta `Agent` não aparece disponível). Isso quebraria a cadeia inteira,
+já que o Planner precisa depois delegar a Forge, Loom, Sentinel e Pilot.
 
-```
-Agent(subagent_type="planner", prompt="MANUTENCAO_ID: [id, se houver] | Projeto: [nome] | CLAUDE.md: [caminho] | Tarefas: [lista exata recebida]")
+O mecanismo real: rodar o Planner como um **processo novo e independente**
+(sessão de topo para si mesmo, não aninhado), via Bash, **esperando ele
+terminar antes de prosseguir**.
+
+⚠️ **A ferramenta Bash NÃO herda variáveis de ambiente do processo pai** —
+mesmo que `CLAUDE_CODE_OAUTH_TOKEN` esteja exportado lá fora, a sessão
+aninhada abre sem autenticação e falha com "Not logged in" (testado e
+confirmado). Por isso o token precisa ser lido do arquivo e exportado
+**dentro do mesmo comando**, sempre:
+
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+claude --agent planner -p "MANUTENCAO_ID: [id, se houver] | Projeto: [nome] | CLAUDE.md: [caminho] | Tarefas: [lista exata recebida]" \
+  --permission-mode auto --output-format stream-json --verbose
 ```
 
-O Planner, rodando como subagente, tem acesso às mesmas ferramentas que
-qualquer sessão (Bash, Edit, Write, MCP, e o próprio `Agent tool` para
-delegar a Analista/Blueprint/Forge/Loom/Sentinel/Pilot em seguida) — não
-há limitação de ambiente por ser subagente. Passe o `MANUTENCAO_ID`
-(quando existir) dentro do prompt para o Planner preservar em todos os
-handoffs seguintes.
+Rodar esse comando de forma **bloqueante** (sem `&`, sem `nohup`) — esperar
+a saída completa antes de considerar a delegação concluída. Ler o
+`stream-json` retornado para confirmar que o Planner de fato progrediu (não
+travou nem terminou sem fazer nada) — checar especificamente que não veio
+`"Not logged in"` nem `is_error: true`. Cada estágio seguinte da cadeia
+(Planner → Forge, Planner → Loom, → Sentinel, → Pilot) segue o MESMO
+padrão — sempre `export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && claude --agent <próximo> -p "..."`
+via Bash bloqueante, nunca `Agent tool` nem `Skill` — cada estágio roda como
+sessão de topo para si mesmo, nunca aninhado dentro de outro.
 
 ---
 
 ## ⛔ FALLBACK DE EMERGÊNCIA — QUANDO A DELEGAÇÃO FALHA
 
-**SE O Agent tool FALHAR AO CHAMAR O PLANNER (erro da ferramenta, subagente
-`planner` não encontrado, etc.):**
+**SE O COMANDO BASH FALHAR AO CHAMAR O PLANNER** (exit code != 0, resposta
+com `"is_error": true`, `"Not logged in"`, ou qualquer coisa que não seja
+uma sessão do Planner progredindo de verdade):
 
 ```
 ✅ FAZER:
    Reportar ao usuário que a delegação falhou e aguardar instrução.
    Mensagem obrigatória:
-   "Não consegui delegar ao Planner via Agent tool.
+   "Não consegui delegar ao Planner via Bash (claude --agent planner).
     O protocolo exige delegação — não posso executar diretamente.
     Por favor, acione o Planner manualmente ou verifique a configuração."
 
@@ -198,6 +218,9 @@ handoffs seguintes.
    find, grep, ls, cat, head, tail
    docker ps, docker logs (somente leitura)
    Leitura do CLAUDE.md
+   `export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && claude
+   --agent planner -p "..."` — ÚNICA exceção, é a delegação em si (ver "Como
+   delegar ao Planner" acima), não uma modificação direta
 
 ❌ PROIBIDO (qualquer modificação):
    git add, git commit, git push, git checkout, git reset
@@ -224,7 +247,7 @@ handoffs seguintes.
 
 ✅ SEMPRE ler o CLAUDE.md
 ✅ SEMPRE passar a lista de tarefas INTACTA ao Planner
-✅ SEMPRE usar Agent tool: Agent(subagent_type="planner", prompt="...")
+✅ SEMPRE usar Bash com export do token inline (ver "Etapa 2"), bloqueante, NUNCA Agent tool
 ✅ SEMPRE reportar falha de delegação ao usuário e PARAR
 ✅ SEMPRE seguir: Hotfix → Planner → Forge+Loom → Sentinel → Pilot
 ```
@@ -237,7 +260,7 @@ handoffs seguintes.
 ⚠️ Tarefa parece simples → PLANNER
 ⚠️ Emergência / sistema fora do ar → PLANNER (ou escalar para Luiz Eduardo)
 ⚠️ Planner não responde → Reportar ao usuário, NÃO executar
-⚠️ Agent tool falha ao chamar Planner → PARAR e reportar ao usuário
+⚠️ Comando Bash falha ao chamar Planner (auth, exit != 0) → PARAR e reportar ao usuário
 ⚠️ Escopo cresceu → PLANNER
 ⚠️ "Só preciso criar uma migration" → PLANNER
 ⚠️ "É só um model" → PLANNER

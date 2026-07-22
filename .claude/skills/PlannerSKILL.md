@@ -45,25 +45,55 @@ otimo, isso alimenta o briefing dos agents especializados.
 Mas quem le e implementa sao Forge, Loom e Blueprint.
 O Planner entrega o CONTEXTO CERTO para o AGENT CERTO no MOMENTO CERTO.
 
-### Como o Planner delega — Agent tool
+### Como o Planner delega — processo novo via Bash (NUNCA Agent tool)
 
-O Planner chama cada agent via Agent tool, passando o briefing completo:
+**NUNCA use `Agent tool`/`Agent(subagent_type=...)` para chamar outro agent.**
+Testado na prática e confirmado que não funciona: `Agent tool` cria um
+SUBAGENTE ANINHADO, e um subagente aninhado (o próprio Planner, se ele foi
+chamado assim) não tem acesso à ferramenta `Agent` de novo — não consegue
+spawnar mais nada. Isso quebraria a cadeia inteira.
 
-```
-# Chamadas sequenciais (aguardar retorno antes de prosseguir)
-Agent(subagent_type="Analista",  prompt="[lead + entrevista + arquitetura completos]")
-Agent(subagent_type="Blueprint", prompt="[Levantamento_Requisitos.md + arquitetura tecnica]")
+O mecanismo real: cada agent roda como **processo novo e independente**
+(sessão de topo para si mesmo), via Bash, chamado com `claude --agent
+<nome>`. A ferramenta Bash **não herda variáveis de ambiente do processo
+pai** — o token precisa ser lido do arquivo e exportado **dentro do mesmo
+comando**, sempre:
 
-# Forge e Loom em PARALELO (mesma chamada)
-Agent(subagent_type="Forge", prompt="[Blueprint + requisitos — backend]")
-Agent(subagent_type="Loom",  prompt="[Blueprint + requisitos — frontend]")
+```bash
+# Chamadas sequenciais (bloqueante — esperar retorno antes de prosseguir)
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+claude --agent analista -p "[lead + entrevista + arquitetura completos]" \
+  --permission-mode auto --output-format stream-json --verbose
+
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+claude --agent blueprint -p "[Levantamento_Requisitos.md + arquitetura tecnica]" \
+  --permission-mode auto --output-format stream-json --verbose
+
+# Forge e Loom em PARALELO — backgrounded no mesmo comando shell, com wait
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token)
+claude --agent forge -p "[Blueprint + requisitos — backend]" \
+  --permission-mode auto --output-format stream-json --verbose > /tmp/forge_out.log 2>&1 &
+FORGE_PID=$!
+claude --agent loom -p "[Blueprint + requisitos — frontend]" \
+  --permission-mode auto --output-format stream-json --verbose > /tmp/loom_out.log 2>&1 &
+LOOM_PID=$!
+wait $FORGE_PID; wait $LOOM_PID
+cat /tmp/forge_out.log; cat /tmp/loom_out.log
 
 # Apos ambos retornarem
-Agent(subagent_type="Sentinel", prompt="[valide o que foi construido]")
-Agent(subagent_type="Pilot",    prompt="[deploy — Sentinel aprovou]")
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+claude --agent sentinel -p "[valide o que foi construido]" \
+  --permission-mode auto --output-format stream-json --verbose
+
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+claude --agent pilot -p "[deploy — Sentinel aprovou]" \
+  --permission-mode auto --output-format stream-json --verbose
 ```
 
-NUNCA encerrar a sessao antes do Pilot confirmar o deploy.
+Cada chamada é **bloqueante** — ler a saída (`stream-json`) e confirmar que
+não veio `"Not logged in"` nem `is_error: true` antes de considerar aquele
+estágio concluído e seguir para o próximo. NUNCA encerrar a sessao antes do
+Pilot confirmar o deploy.
 
 
 
@@ -189,31 +219,35 @@ Hotfix recebido → Planner entra aqui
         ↓
 [PLANNER] le CLAUDE.md + arquivos relevantes do projeto
         ↓
-[ANALISTA] via Agent tool — MODO HOTFIX
+[ANALISTA] via Bash (`claude --agent analista -p "..."`) — MODO HOTFIX
    Lê o contexto, decompõe o pedido, gera Especificacao_Hotfix.md
    (RF, RN, telas com filtros/botões/ícones, spec backend, spec frontend)
         ↓
-[BRUSH] via Agent tool — MODO HOTFIX
+[BRUSH] via Bash (`claude --agent brush -p "..."`) — MODO HOTFIX
    Lê Especificacao_Hotfix.md, analisa UI de cada tela
    Gera Especificacao_UI_Hotfix.md
    (layout, ícones Lucide, espaçamentos, componentes existentes, mobile)
         ↓
-[FORGE] via Agent tool — lê Especificacao_Hotfix.md (backend)
-[LOOM]  via Agent tool — lê Especificacao_Hotfix.md + Especificacao_UI_Hotfix.md (frontend)
-   ambos em PARALELO
+[FORGE] via Bash — lê Especificacao_Hotfix.md (backend)
+[LOOM]  via Bash — lê Especificacao_Hotfix.md + Especificacao_UI_Hotfix.md (frontend)
+   ambos em PARALELO (backgrounded + wait no mesmo comando shell)
         ↓
 COMMIT OBRIGATORIO — verificar antes de continuar:
    git status → deve mostrar "nothing to commit, working tree clean"
    Se houver arquivos nao commitados: git add + git commit AGORA
    SEM COMMIT = Sentinel nao vera as mudancas = esteira quebrada
         ↓
-[SENTINEL] via Agent tool
-   Agent(subagent_type="sentinel", prompt="[valide o que foi construido]")
-   Aguardar aprovacao
+[SENTINEL] via Bash
+   export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+   claude --agent sentinel -p "[valide o que foi construido]" \
+     --permission-mode auto --output-format stream-json --verbose
+   Aguardar aprovacao (bloqueante)
         ↓
-[PILOT] via Agent tool (somente se Sentinel aprovar)
-   Agent(subagent_type="pilot", prompt="[deploy — Sentinel aprovou]")
-   Aguardar conclusao
+[PILOT] via Bash (somente se Sentinel aprovar)
+   export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+   claude --agent pilot -p "[deploy — Sentinel aprovou]" \
+     --permission-mode auto --output-format stream-json --verbose
+   Aguardar conclusao (bloqueante)
 ```
 
 ### Regras criticas do modo hotfix
@@ -222,10 +256,12 @@ COMMIT OBRIGATORIO — verificar antes de continuar:
 PULAR: doc-generator, Blueprint, Brush
 NAO PULAR: Analista, Forge, Loom, commit, Sentinel, Pilot
 
-ANALISTA, BRUSH, FORGE, LOOM, SENTINEL, PILOT → todos via Agent tool
-(subagentes na MESMA sessao, mesmo diretorio de projeto — nao existe mais
-Claw Empire nem worktree isolado por task; todo mundo compartilha o mesmo
-checkout do repo em disco).
+ANALISTA, BRUSH, FORGE, LOOM, SENTINEL, PILOT → todos via Bash
+(`claude --agent <nome> -p "..."`, sempre com export do token inline —
+ver "Como o Planner delega" acima), NUNCA via Agent tool. Cada um roda
+como sessao de topo propria, no MESMO diretorio de projeto — nao existe
+mais Claw Empire nem worktree isolado por task; todo mundo compartilha o
+mesmo checkout do repo em disco.
 
 Analista gera Especificacao_Hotfix.md → Brush lê e gera Especificacao_UI_Hotfix.md
 → Forge lê spec funcional, Loom lê spec funcional + spec UI → Sentinel valida
@@ -238,11 +274,10 @@ Sem commit: Sentinel ve o working tree sem as mudancas, aprova sem validar nada.
 
 ### Como passar o pedido ao Analista (MODO HOTFIX)
 
-```python
-Agent(
-  subagent_type="analista",
-  prompt=f"""
-MODO HOTFIX — analise o pedido e gere Especificacao_Hotfix.md no worktree.
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+claude --agent analista -p "
+MODO HOTFIX — analise o pedido e gere Especificacao_Hotfix.md no projeto.
 
 Sistema: {nome_sistema}
 CLAUDE.md: {caminho}/CLAUDE.md
@@ -255,29 +290,26 @@ Instrucoes:
 1. Ler o CLAUDE.md do projeto
 2. Ler 2-3 pages/models existentes similares ao que sera implementado
 3. Decompor o pedido em RF, RN, telas detalhadas, spec backend, spec frontend
-4. Salvar Especificacao_Hotfix.md no worktree
+4. Salvar Especificacao_Hotfix.md no diretorio do projeto
 5. Avisar quando concluir
-  """
-)
+" --permission-mode auto --output-format stream-json --verbose
 ```
 
 ### Como chamar o Brush (MODO HOTFIX)
 
-```python
-Agent(
-  subagent_type="brush",
-  prompt="""
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+claude --agent brush -p "
 MODO HOTFIX — analise a UI das telas especificadas e gere Especificacao_UI_Hotfix.md.
 
 Sistema: {nome_sistema}
 CLAUDE.md: {caminho}/CLAUDE.md
 
-Leia Especificacao_Hotfix.md no worktree (gerada pelo Analista).
+Leia Especificacao_Hotfix.md no projeto (gerada pelo Analista).
 Para cada tela especificada, defina: layout, icones Lucide, espacamentos,
 componentes existentes a reutilizar, padroes mobile-first.
-Salve Especificacao_UI_Hotfix.md no worktree ao finalizar.
-  """
-)
+Salve Especificacao_UI_Hotfix.md no diretorio do projeto ao finalizar.
+" --permission-mode auto --output-format stream-json --verbose
 ```
 
 ### Como passar as specs para Forge e Loom
