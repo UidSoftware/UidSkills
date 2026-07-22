@@ -201,33 +201,26 @@ não é só reportar em texto (ninguém vê o log de uma sessão automática) �
 ```
 ✅ FAZER (nessa ordem):
 
-1. Criar uma Notificacao no SystemD via mcp__systemd__query, ANTES de
-   reportar e parar. Checar se já existe uma pendente pra essa mesma
-   referência (evita duplicar a cada retentativa):
+1. Criar uma Notificacao no SystemD via Bash, ANTES de reportar e parar
+   (NÃO use `mcp__systemd__query` — não carrega numa sessão `--agent -p`;
+   NÃO tente connection string direta — o postgres do SystemD não expõe
+   porta no host). Use o management command dedicado (já é idempotente
+   por `referencia` — não duplica a cada retentativa):
 
-   INSERT INTO notificacoes_notificacao
-     (tipo, titulo, descricao, prioridade, perfil_destino, referencia,
-      resolvida, ativo, criado_em, atualizado_em)
-   SELECT
-     'IMPEDIMENTO_ESTEIRA',
-     'Delegação bloqueada — Manutenção #[MANUTENCAO_ID] ([nome do sistema])',
-     'Hotfix não conseguiu delegar ao Planner via Bash (claude --agent planner).
-      Motivo: [erro exato retornado — ex: bloqueio do classificador de permissão].
-      Log completo: [caminho do log, se souber].
-      Para destravar: acesse a VPS via SSH e rode interativamente (sem -p):
-        cd [caminho do projeto]
-        claude --agent planner
-      E cole o briefing da tarefa (MANUTENCAO_ID + descrição) quando o
-      Planner perguntar. Uma sessão interativa tem um humano ali pra
-      aprovar qualquer prompt de permissão que aparecer.',
-     'ALTA',
-     'ADMIN',
-     'manutencao:[MANUTENCAO_ID]',
-     false, true, NOW(), NOW()
-   WHERE NOT EXISTS (
-     SELECT 1 FROM notificacoes_notificacao
-     WHERE referencia = 'manutencao:[MANUTENCAO_ID]' AND resolvida = false
-   );
+   ```bash
+   docker exec sytemd-backend-1 python manage.py criar_impedimento \
+     --titulo "Delegação bloqueada — Manutenção #[MANUTENCAO_ID] ([nome do sistema])" \
+     --descricao "Hotfix não conseguiu delegar ao Planner via Bash (claude --agent planner).
+   Motivo: [erro exato retornado — ex: bloqueio do classificador de permissão].
+   Log completo: [caminho do log, se souber].
+   Para destravar: acesse a VPS via SSH e rode interativamente (sem -p):
+     cd [caminho do projeto]
+     claude --agent planner
+   E cole o briefing da tarefa (MANUTENCAO_ID + descrição) quando o Planner
+   perguntar. Uma sessão interativa tem um humano ali pra aprovar qualquer
+   prompt de permissão que aparecer." \
+     --referencia "manutencao:[MANUTENCAO_ID]"
+   ```
 
 2. Reportar ao usuário que a delegação falhou e aguardar instrução.
    Mensagem obrigatória:

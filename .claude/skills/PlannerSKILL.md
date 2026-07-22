@@ -104,26 +104,21 @@ como aprovar nada numa sessão automática. Se isso acontecer:
 
 ```
 ✅ FAZER:
-1. Criar uma Notificacao no SystemD via mcp__systemd__query (mesmo padrão
-   do Hotfix — ver HotfixSKILL.md, seção "Fallback de Emergência"):
+1. Criar uma Notificacao no SystemD via Bash (mesmo padrão do Hotfix — ver
+   HotfixSKILL.md, seção "Fallback de Emergência"). NÃO use
+   `mcp__systemd__query` — não carrega numa sessão `--agent -p`. Use o
+   management command dedicado (idempotente por `referencia`):
 
-   INSERT INTO notificacoes_notificacao
-     (tipo, titulo, descricao, prioridade, perfil_destino, referencia,
-      resolvida, ativo, criado_em, atualizado_em)
-   SELECT
-     'IMPEDIMENTO_ESTEIRA',
-     'Delegação bloqueada — Manutenção #[MANUTENCAO_ID], estágio [Forge/Loom/Sentinel/Pilot]',
-     'Planner não conseguiu delegar ao [estágio] via Bash. Motivo: [erro
-      exato]. Para destravar: SSH na VPS, rode interativamente (sem -p):
-        cd [caminho do projeto]
-        claude --agent [nome do estagio]
-      e cole o briefing quando perguntado.',
-     'ALTA', 'ADMIN', 'manutencao:[MANUTENCAO_ID]',
-     false, true, NOW(), NOW()
-   WHERE NOT EXISTS (
-     SELECT 1 FROM notificacoes_notificacao
-     WHERE referencia = 'manutencao:[MANUTENCAO_ID]' AND resolvida = false
-   );
+   ```bash
+   docker exec sytemd-backend-1 python manage.py criar_impedimento \
+     --titulo "Delegação bloqueada — Manutenção #[MANUTENCAO_ID], estágio [Forge/Loom/Sentinel/Pilot]" \
+     --descricao "Planner não conseguiu delegar ao [estágio] via Bash. Motivo: [erro exato].
+   Para destravar: SSH na VPS, rode interativamente (sem -p):
+     cd [caminho do projeto]
+     claude --agent [nome do estagio]
+   e cole o briefing quando perguntado." \
+     --referencia "manutencao:[MANUTENCAO_ID]"
+   ```
 
 2. Reportar a falha e parar — nunca implementar o trabalho daquele
    estágio sozinho só porque a delegação falhou.
