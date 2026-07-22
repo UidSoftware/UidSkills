@@ -15,6 +15,24 @@ description: >
 
 ---
 
+## ⛔ REGRA CRÍTICA — Bash delegando a outro agent: NUNCA `run_in_background`
+
+Se esta skill precisar rodar `claude --agent <nome> -p "..."` via Bash pra
+delegar trabalho a outro agent, a chamada tem que ser **sempre bloqueante**:
+
+❌ NUNCA usar `run_in_background: true` no Bash tool para isso
+❌ NUNCA `&` no final do comando sem um `wait` correspondente no mesmo comando
+
+Bug real já confirmado na prática: o Planner disparou o Analista com
+`run_in_background: true`; quando a sessão do Planner encerrou logo
+depois, o processo filho foi morto junto, sem produzir nada — a fase
+inteira se perdeu em silêncio, sem nenhum erro visível.
+`run_in_background` é pra tarefa que o usuário quer acompanhar depois
+(ex: um build longo); nunca para uma delegação da esteira, que precisa da
+sessão atual viva até o processo filho terminar de verdade.
+
+---
+
 ## Fundamentos do Papel (Camada Universal)
 
 > O Arquiteto não escreve código de produção — ele define as regras

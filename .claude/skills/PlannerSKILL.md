@@ -95,6 +95,18 @@ não veio `"Not logged in"` nem `is_error: true` antes de considerar aquele
 estágio concluído e seguir para o próximo. NUNCA encerrar a sessao antes do
 Pilot confirmar o deploy.
 
+⛔ **NUNCA usar `run_in_background: true` no Bash tool para essas chamadas**
+(nem `&` sem `wait` correspondente). Bug real já confirmado na prática: o
+Planner disparou o Analista com `run_in_background: true`; quando a
+sessão do Planner encerrou logo em seguida, o processo do Analista foi
+**morto junto**, sem gerar nada — a Fase inteira foi perdida em silêncio.
+`run_in_background` só existe pra tarefas que o USUÁRIO quer acompanhar
+depois (ex: um build longo) — nunca para uma delegação da esteira, que
+precisa da sessão atual viva até o processo filho terminar de verdade. A
+ÚNICA forma correta de rodar dois estágios ao mesmo tempo (Forge + Loom)
+é `&` + `wait` explícito dentro do MESMO comando shell (ver exemplo
+acima) — nunca o parâmetro `run_in_background` do Bash tool.
+
 ### Se alguma chamada Bash falhar (Forge, Loom, Sentinel ou Pilot)
 
 Sessões sem interação humana (`-p`, sem TTY) às vezes têm esse tipo de

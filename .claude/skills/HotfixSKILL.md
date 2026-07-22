@@ -171,14 +171,24 @@ claude --agent planner -p "MANUTENCAO_ID: [id, se houver] | Projeto: [nome] | CL
   --permission-mode auto --output-format stream-json --verbose
 ```
 
-Rodar esse comando de forma **bloqueante** (sem `&`, sem `nohup`) — esperar
-a saída completa antes de considerar a delegação concluída. Ler o
-`stream-json` retornado para confirmar que o Planner de fato progrediu (não
-travou nem terminou sem fazer nada) — checar especificamente que não veio
-`"Not logged in"` nem `is_error: true`. Cada estágio seguinte da cadeia
+Rodar esse comando de forma **bloqueante** (sem `&`, sem `nohup`, e
+**NUNCA com `run_in_background: true` no Bash tool**) — esperar a saída
+completa antes de considerar a delegação concluída. Ler o `stream-json`
+retornado para confirmar que o Planner de fato progrediu (não travou nem
+terminou sem fazer nada) — checar especificamente que não veio
+`"Not logged in"` nem `is_error: true`.
+
+⛔ Bug real já confirmado na prática: `run_in_background: true` mata o
+processo filho junto quando a sessão atual encerra — a Fase inteira se
+perde em silêncio, sem nenhum erro visível. `run_in_background` é pra
+tarefa que o usuário quer acompanhar depois; nunca pra uma delegação da
+esteira.
+
+Cada estágio seguinte da cadeia
 (Planner → Forge, Planner → Loom, → Sentinel, → Pilot) segue o MESMO
 padrão — sempre `export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && claude --agent <próximo> -p "..."`
-via Bash bloqueante, nunca `Agent tool` nem `Skill` — cada estágio roda como
+via Bash bloqueante (nunca `run_in_background`), nunca `Agent tool` nem
+`Skill` — cada estágio roda como
 sessão de topo para si mesmo, nunca aninhado dentro de outro.
 
 ---
