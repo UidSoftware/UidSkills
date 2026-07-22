@@ -95,6 +95,40 @@ não veio `"Not logged in"` nem `is_error: true` antes de considerar aquele
 estágio concluído e seguir para o próximo. NUNCA encerrar a sessao antes do
 Pilot confirmar o deploy.
 
+### Se alguma chamada Bash falhar (Forge, Loom, Sentinel ou Pilot)
+
+Sessões sem interação humana (`-p`, sem TTY) às vezes têm esse tipo de
+chamada bloqueada pelo classificador de permissão do próprio Claude Code —
+ele exige um humano por perto pra aprovar spawnar outra sessão, e não tem
+como aprovar nada numa sessão automática. Se isso acontecer:
+
+```
+✅ FAZER:
+1. Criar uma Notificacao no SystemD via mcp__systemd__query (mesmo padrão
+   do Hotfix — ver HotfixSKILL.md, seção "Fallback de Emergência"):
+
+   INSERT INTO notificacoes_notificacao
+     (tipo, titulo, descricao, prioridade, perfil_destino, referencia,
+      resolvida, ativo, criado_em, atualizado_em)
+   SELECT
+     'IMPEDIMENTO_ESTEIRA',
+     'Delegação bloqueada — Manutenção #[MANUTENCAO_ID], estágio [Forge/Loom/Sentinel/Pilot]',
+     'Planner não conseguiu delegar ao [estágio] via Bash. Motivo: [erro
+      exato]. Para destravar: SSH na VPS, rode interativamente (sem -p):
+        cd [caminho do projeto]
+        claude --agent [nome do estagio]
+      e cole o briefing quando perguntado.',
+     'ALTA', 'ADMIN', 'manutencao:[MANUTENCAO_ID]',
+     false, true, NOW(), NOW()
+   WHERE NOT EXISTS (
+     SELECT 1 FROM notificacoes_notificacao
+     WHERE referencia = 'manutencao:[MANUTENCAO_ID]' AND resolvida = false
+   );
+
+2. Reportar a falha e parar — nunca implementar o trabalho daquele
+   estágio sozinho só porque a delegação falhou.
+```
+
 
 
 ### Duas metodologias, dois públicos

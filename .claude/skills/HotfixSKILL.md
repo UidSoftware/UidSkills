@@ -186,15 +186,55 @@ sessão de topo para si mesmo, nunca aninhado dentro de outro.
 ## ⛔ FALLBACK DE EMERGÊNCIA — QUANDO A DELEGAÇÃO FALHA
 
 **SE O COMANDO BASH FALHAR AO CHAMAR O PLANNER** (exit code != 0, resposta
-com `"is_error": true`, `"Not logged in"`, ou qualquer coisa que não seja
-uma sessão do Planner progredindo de verdade):
+com `"is_error": true`, `"Not logged in"`, bloqueio do classificador de
+permissão do Claude Code, ou qualquer coisa que não seja uma sessão do
+Planner progredindo de verdade):
+
+Isso costuma acontecer porque a sessão roda sem interação humana (`-p`,
+sem TTY) — o próprio Claude Code exige um humano por perto para aprovar
+esse tipo de ação (spawnar outra sessão) quando julga arriscado. Uma
+sessão interativa normalmente não tem esse problema, porque tem alguém
+ali para responder ao prompt de permissão. Por isso a saída correta aqui
+não é só reportar em texto (ninguém vê o log de uma sessão automática) —
+é criar um **registro que aparece pra um humano de verdade**:
 
 ```
-✅ FAZER:
-   Reportar ao usuário que a delegação falhou e aguardar instrução.
+✅ FAZER (nessa ordem):
+
+1. Criar uma Notificacao no SystemD via mcp__systemd__query, ANTES de
+   reportar e parar. Checar se já existe uma pendente pra essa mesma
+   referência (evita duplicar a cada retentativa):
+
+   INSERT INTO notificacoes_notificacao
+     (tipo, titulo, descricao, prioridade, perfil_destino, referencia,
+      resolvida, ativo, criado_em, atualizado_em)
+   SELECT
+     'IMPEDIMENTO_ESTEIRA',
+     'Delegação bloqueada — Manutenção #[MANUTENCAO_ID] ([nome do sistema])',
+     'Hotfix não conseguiu delegar ao Planner via Bash (claude --agent planner).
+      Motivo: [erro exato retornado — ex: bloqueio do classificador de permissão].
+      Log completo: [caminho do log, se souber].
+      Para destravar: acesse a VPS via SSH e rode interativamente (sem -p):
+        cd [caminho do projeto]
+        claude --agent planner
+      E cole o briefing da tarefa (MANUTENCAO_ID + descrição) quando o
+      Planner perguntar. Uma sessão interativa tem um humano ali pra
+      aprovar qualquer prompt de permissão que aparecer.',
+     'ALTA',
+     'ADMIN',
+     'manutencao:[MANUTENCAO_ID]',
+     false, true, NOW(), NOW()
+   WHERE NOT EXISTS (
+     SELECT 1 FROM notificacoes_notificacao
+     WHERE referencia = 'manutencao:[MANUTENCAO_ID]' AND resolvida = false
+   );
+
+2. Reportar ao usuário que a delegação falhou e aguardar instrução.
    Mensagem obrigatória:
    "Não consegui delegar ao Planner via Bash (claude --agent planner).
     O protocolo exige delegação — não posso executar diretamente.
+    Criei uma Notificação (IMPEDIMENTO_ESTEIRA) no SystemD para um humano
+    revisar e destravar manualmente.
     Por favor, acione o Planner manualmente ou verifique a configuração."
 
 ❌ NÃO FAZER:
@@ -202,11 +242,13 @@ uma sessão do Planner progredindo de verdade):
    "Ajudar" implementando parte da solução
    Raciocinar que "já que não consigo delegar, vou fazer eu mesmo"
    Qualquer modificação de arquivo, banco ou sistema
+   Pular a criação da Notificacao "porque já vou reportar no chat mesmo"
 ```
 
 > **A FALHA NA DELEGAÇÃO NÃO É AUTORIZAÇÃO PARA EXECUTAR.**
 > **PARAR E REPORTAR É A ÚNICA RESPOSTA CORRETA.**
 > **O PIPELINE PASSA PELO PLANNER — SEM EXCEÇÃO, SEM ALTERNATIVA.**
+> **SEM A NOTIFICAÇÃO, NINGUÉM FICA SABENDO QUE TRAVOU — CRIAR É OBRIGATÓRIO.**
 
 ---
 
@@ -260,7 +302,7 @@ uma sessão do Planner progredindo de verdade):
 ⚠️ Tarefa parece simples → PLANNER
 ⚠️ Emergência / sistema fora do ar → PLANNER (ou escalar para Luiz Eduardo)
 ⚠️ Planner não responde → Reportar ao usuário, NÃO executar
-⚠️ Comando Bash falha ao chamar Planner (auth, exit != 0) → PARAR e reportar ao usuário
+⚠️ Comando Bash falha ao chamar Planner (auth, exit != 0) → criar Notificacao IMPEDIMENTO_ESTEIRA, PARAR e reportar ao usuário
 ⚠️ Escopo cresceu → PLANNER
 ⚠️ "Só preciso criar uma migration" → PLANNER
 ⚠️ "É só um model" → PLANNER
