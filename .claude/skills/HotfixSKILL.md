@@ -1,14 +1,17 @@
 ---
 name: hotfix
 description: >
-  Use esta skill quando receber um pedido de manutenção MANUAL via Boss CLI
-  no Claw Empire — bug urgente, sistema fora do ar, fix emergencial.
+  Use esta skill quando receber um pedido de manutenção MANUAL — bug
+  urgente, sistema fora do ar, fix emergencial, acionado diretamente por
+  Luiz Eduardo numa sessao do Claude Code (nao pelo form automatico do
+  cliente).
   Hotfix lê o CLAUDE.md do projeto e IMEDIATAMENTE passa para o Planner.
   ATENÇÃO: quando a solicitação vem do form de manutenção do cliente
-  (registro no banco do sistema do cliente), o fluxo começa pelo Analista
+  (registro no banco do sistema do cliente, disparado automaticamente
+  pelo cron `disparar_hotfix.py`), o fluxo começa pelo Analista
   (modo manutencao), não pelo Hotfix.
   Dispare quando mencionar: "bug", "correção", "hotfix", "manutenção urgente",
-  "Boss CLI", "sistema fora do ar", "fix emergencial", "Hotfix".
+  "sistema fora do ar", "fix emergencial", "Hotfix".
   Hotfix pula Analista, doc-generator, Blueprint e Brush —
   o sistema já existe, a arquitetura já está definida.
   Para manutenções via form de cliente → Analista (modo manutencao) → Planner.
@@ -21,19 +24,21 @@ description: >
 ## Dois fluxos de manutenção — entenda qual é qual
 
 ```
-FLUXO 1 — Via Boss CLI (manual, urgente)
-  Quem aciona: Luiz Eduardo, via sprite do boss no Claw Empire
+FLUXO 1 — Manual, urgente
+  Quem aciona: Luiz Eduardo, pedindo direto numa sessao do Claude Code
   Quando usar: bug crítico, sistema fora do ar, emergência
   Entry point: HOTFIX → Planner → Forge+Loom → Sentinel → Pilot
 
 FLUXO 2 — Via form do cliente (automático, assíncrono)
-  Quem aciona: cliente do sistema (não-dev) preenchendo form
+  Quem aciona: cliente do sistema (não-dev) preenchendo form; o cron
+  `disparar_hotfix.py` (roda a cada 4h no host, sem Claw Empire) le a
+  Manutencao pendente no banco e dispara `claude --agent hotfix`
   Quando usar: manutenção rotineira, melhoria, feature pequena
   Entry point: Analista (modo manutencao) → Planner → pipeline conforme tipo
 ```
 
-**Se você foi acionado via Boss CLI → você é o Fluxo 1. Continue lendo.**
-**Se veio de um registro de Manutencao no banco → chame o Analista, não o Hotfix.**
+**Se você foi acionado diretamente por Luiz Eduardo numa sessão interativa → você é o Fluxo 1. Continue lendo.**
+**Se veio de um registro de Manutencao no banco (MODO MANUTENCAO BANCO na sua task) → chame o Analista, não o Hotfix.**
 
 ---
 
@@ -46,7 +51,7 @@ FLUXO 2 — Via form do cliente (automático, assíncrono)
 
 ```
 1. LER o CLAUDE.md do projeto informado
-2. CHAMAR o Planner via Workflow tool ou TaskCreate — NUNCA via Agent tool
+2. CHAMAR o Planner via Agent tool: Agent(subagent_type="planner", prompt="...")
 3. AGUARDAR — não fazer mais nada
 ```
 
@@ -111,16 +116,18 @@ Caminho: {caminho_servidor}
 Tarefa:
 {descricao}
 CLAUDE.md: {caminho}/CLAUDE.md
-INSTRUCAO FINAL (apos Pilot confirmar CI/CD success):
-  UPDATE ordens_manutencao SET feito=true, atualizado_em=NOW() WHERE id={id};
+INSTRUCAO FINAL (apos Sentinel validar de verdade e Pilot confirmar deploy real):
+  docker exec sytemd-backend-1 python manage.py disparar_hotfix --concluir {id}
 ```
 
 **Neste modo — sem pedir informações ao usuário:**
 
 1. LER o CLAUDE.md no caminho indicado na task description
-2. PASSAR ao Planner com o briefing completo, incluindo `MANUTENCAO_ID`
+2. CHAMAR o Planner via Agent tool com o briefing completo, incluindo `MANUTENCAO_ID`
 3. O `MANUTENCAO_ID` deve ser preservado em todos os handoffs: Hotfix → Planner → Pilot
-4. O Pilot executa o `UPDATE` via `mcp__systemd__query` após confirmar CI/CD `completed success`
+4. O Pilot executa o comando `--concluir` via Bash somente depois de confirmar
+   o deploy real em produção (não é a mesma sessão do Hotfix/Planner que decide
+   isso sozinha — Sentinel precisa ter validado de verdade antes)
 
 
 ## Etapa 1 — Leitura (ÚNICO trabalho do Hotfix)
@@ -137,58 +144,36 @@ Isso é tudo. Não há Etapa 2 para o Hotfix.
 
 ## Etapa 2 — Delegação ao Planner (OBRIGATÓRIA SEMPRE)
 
-### ⛔ POR QUE NUNCA USAR O Agent tool PARA CHAMAR O PLANNER
+### Como delegar ao Planner — Agent tool
 
-O `Agent tool` cria um subagente local sem acesso às ferramentas do Empire
-(TaskCreate, Workflow, TaskGet, etc.).
-
-Se você chamar o Planner via `Agent tool`:
-- O Planner **não consegue criar tasks** para Forge, Loom, Sentinel e Pilot
-- O Planner implementa tudo sozinho sem chamar ninguém
-- Forge e Loom nunca rodam → ninguém commita o código
-- Sentinel e Pilot nunca são criados → nenhum deploy acontece
-- A esteira quebra silenciosamente — a task vai para "review" e trava
+Não existe Claw Empire nem ferramentas próprias dele (`Workflow`, `TaskCreate`
+de task board, `TaskGet`) — a esteira roda direto via Claude Code CLI, sem
+container nem quadro de tasks separado. O mecanismo real de delegação é o
+`Agent tool` nativo, chamando o Planner como subagente:
 
 ```
-NUNCA: Agent(subagent_type="claude",   prompt="...")
-NUNCA: Agent(subagent_type="planner",  prompt="...")
-NUNCA: Agent(subagent_type="Planner",  prompt="...")
-O Agent tool nao e um fallback — e um bypass que quebra a esteira.
+Agent(subagent_type="planner", prompt="MANUTENCAO_ID: [id, se houver] | Projeto: [nome] | CLAUDE.md: [caminho] | Tarefas: [lista exata recebida]")
 ```
 
-### 1a tentativa — Workflow tool (cria task Empire completa):
-
-```
-Workflow(
-  agent: "Planner",
-  prompt: "MANUTENCAO | Projeto: [nome] | CLAUDE.md: [caminho] | Tarefas: [lista exata recebida]"
-)
-```
-
-### 2a tentativa — TaskCreate (se Workflow falhar):
-
-```
-TaskCreate(
-  title: "MANUTENCAO — [nome do projeto]",
-  description: "MANUTENCAO | Projeto: [nome] | CLAUDE.md: [caminho] | Tarefas: [lista exata]",
-  agent: "Planner"
-)
-```
-
-> **SE WORKFLOW E TASKCREATE FALHAREM: ver secao FALLBACK DE EMERGENCIA abaixo.**
-> **NAO HA TERCEIRA TENTATIVA. Agent tool nunca e opcao.**
+O Planner, rodando como subagente, tem acesso às mesmas ferramentas que
+qualquer sessão (Bash, Edit, Write, MCP, e o próprio `Agent tool` para
+delegar a Analista/Blueprint/Forge/Loom/Sentinel/Pilot em seguida) — não
+há limitação de ambiente por ser subagente. Passe o `MANUTENCAO_ID`
+(quando existir) dentro do prompt para o Planner preservar em todos os
+handoffs seguintes.
 
 ---
 
 ## ⛔ FALLBACK DE EMERGÊNCIA — QUANDO A DELEGAÇÃO FALHA
 
-**SE O PLANNER NÃO PODE SER CHAMADO POR NENHUM MECANISMO:**
+**SE O Agent tool FALHAR AO CHAMAR O PLANNER (erro da ferramenta, subagente
+`planner` não encontrado, etc.):**
 
 ```
 ✅ FAZER:
    Reportar ao usuário que a delegação falhou e aguardar instrução.
    Mensagem obrigatória:
-   "Não consegui delegar ao Planner via Workflow/Agent/TaskCreate.
+   "Não consegui delegar ao Planner via Agent tool.
     O protocolo exige delegação — não posso executar diretamente.
     Por favor, acione o Planner manualmente ou verifique a configuração."
 
@@ -239,7 +224,7 @@ TaskCreate(
 
 ✅ SEMPRE ler o CLAUDE.md
 ✅ SEMPRE passar a lista de tarefas INTACTA ao Planner
-✅ SEMPRE usar Workflow → TaskCreate (nessa ordem) — NUNCA Agent tool
+✅ SEMPRE usar Agent tool: Agent(subagent_type="planner", prompt="...")
 ✅ SEMPRE reportar falha de delegação ao usuário e PARAR
 ✅ SEMPRE seguir: Hotfix → Planner → Forge+Loom → Sentinel → Pilot
 ```
@@ -252,12 +237,12 @@ TaskCreate(
 ⚠️ Tarefa parece simples → PLANNER
 ⚠️ Emergência / sistema fora do ar → PLANNER (ou escalar para Luiz Eduardo)
 ⚠️ Planner não responde → Reportar ao usuário, NÃO executar
-⚠️ Workflow falha → TaskCreate, se falhar → PARAR e reportar ao usuário
+⚠️ Agent tool falha ao chamar Planner → PARAR e reportar ao usuário
 ⚠️ Escopo cresceu → PLANNER
 ⚠️ "Só preciso criar uma migration" → PLANNER
 ⚠️ "É só um model" → PLANNER
 ⚠️ "O usuário pediu urgência" → PLANNER
-⚠️ Veio de form de cliente (não Boss CLI) → ANALISTA modo manutencao, não Hotfix
+⚠️ Veio de form de cliente (não pedido direto de Luiz Eduardo) → ANALISTA modo manutencao, não Hotfix
 ⚠️ Qualquer situação que não seja "delegação ao Planner" → PLANNER
 ```
 

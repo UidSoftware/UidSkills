@@ -207,12 +207,12 @@ COMMIT OBRIGATORIO — verificar antes de continuar:
    Se houver arquivos nao commitados: git add + git commit AGORA
    SEM COMMIT = Sentinel nao vera as mudancas = esteira quebrada
         ↓
-[SENTINEL] via TaskCreate (nao via Agent tool)
-   TaskCreate(title="Sentinel — [projeto]", agent="Sentinel")
+[SENTINEL] via Agent tool
+   Agent(subagent_type="sentinel", prompt="[valide o que foi construido]")
    Aguardar aprovacao
         ↓
-[PILOT] via TaskCreate (somente se Sentinel aprovar)
-   TaskCreate(title="Pilot — [projeto]", agent="Pilot")
+[PILOT] via Agent tool (somente se Sentinel aprovar)
+   Agent(subagent_type="pilot", prompt="[deploy — Sentinel aprovou]")
    Aguardar conclusao
 ```
 
@@ -222,22 +222,18 @@ COMMIT OBRIGATORIO — verificar antes de continuar:
 PULAR: doc-generator, Blueprint, Brush
 NAO PULAR: Analista, Forge, Loom, commit, Sentinel, Pilot
 
-ANALISTA → Agent tool (MODO HOTFIX — gera Especificacao_Hotfix.md no worktree)
-BRUSH   → Agent tool (MODO HOTFIX — gera Especificacao_UI_Hotfix.md no worktree)
-FORGE e LOOM → Agent tool (subagentes locais — implementam no worktree)
-SENTINEL e PILOT → TaskCreate (tasks Empire com worktree proprio)
+ANALISTA, BRUSH, FORGE, LOOM, SENTINEL, PILOT → todos via Agent tool
+(subagentes na MESMA sessao, mesmo diretorio de projeto — nao existe mais
+Claw Empire nem worktree isolado por task; todo mundo compartilha o mesmo
+checkout do repo em disco).
 
-Por que Sentinel e Pilot precisam de TaskCreate e nao Agent tool?
-Porque precisam de worktree isolado para validar e deployar.
-Se chamados via Agent tool, nao tem acesso ao ambiente de producao.
-
-Por que Analista, Brush, Forge e Loom sao Agent tool?
-Porque trabalham no MESMO worktree — compartilham arquivos.
 Analista gera Especificacao_Hotfix.md → Brush lê e gera Especificacao_UI_Hotfix.md
-→ Forge lê spec funcional, Loom lê spec funcional + spec UI.
+→ Forge lê spec funcional, Loom lê spec funcional + spec UI → Sentinel valida
+o que foi commitado → Pilot builda/testa/da push (git push dispara o CI/CD
+do proprio repo, que faz o deploy real).
 
 COMMIT entre Loom e Sentinel e OBRIGATORIO.
-Sem commit: Sentinel ve worktree vazio, aprova sem validar nada.
+Sem commit: Sentinel ve o working tree sem as mudancas, aprova sem validar nada.
 ```
 
 ### Como passar o pedido ao Analista (MODO HOTFIX)
@@ -298,37 +294,34 @@ Leia Especificacao_Hotfix.md e Especificacao_UI_Hotfix.md no worktree antes de i
 Implemente o frontend seguindo a spec funcional E a spec de UI.
 ```
 
-### 0. Pré-voo: uso do Claude
+### 0. Pré-voo: orçamento da sessão
 
-Antes de iniciar a Etapa 1 de QUALQUER projeto novo (via lead/MCP ou via
-task recebida), o Planner consulta:
+Não existe mais o endpoint do Claw Empire que expunha o uso de cota em
+tempo real (dependia do servidor interno do container, que não existe
+fora dele) — não tentar consultar `localhost:8790/api/cli-usage` nem
+nenhuma URL parecida, a chamada vai falhar sempre.
+
+O controle de orçamento agora é feito por quem dispara a sessão, não por
+uma checagem que o Planner faz sozinho:
 
 ```
-GET http://localhost:8790/api/cli-usage  (Authorization: Bearer $API_AUTH_TOKEN)
-→ usage.claude.windows[]  (5-hour, 7-day, 7-day Sonnet, 7-day Opus)
-```
-
-```
-✅ Todas as janelas presentes com utilization == 0
-   → segue normalmente para a Etapa 1.
-
-❌ Qualquer janela com utilization > 0, OU resposta com "error"/
-   "windows" vazio (uso não pôde ser verificado)
-   → NÃO iniciar a Etapa 1. Notificar Luiz Eduardo pelos canais
-   disponíveis:
-
-   1. Decisions    → criar Notificacao no SystemD via MCP PostgreSQL
-                      (tipo=LIMITE_CLAUDE_ATIVO, perfil_destino='ADMIN',
-                      descricao com a janela mais próxima do reset/
-                      resetsAt, ou com o erro retornado se "windows"
-                      vier vazio)
-   2. Announcement → POST /api/announcements no Empire, avisando o
-                      motivo do bloqueio e qual projeto está aguardando
-   3. CLI          → se a sessão for interativa, avisar diretamente no
-                      chat/terminal
-
-   Aguardar o reset (resetsAt) ou autorização explícita de Luiz Eduardo
-   antes de prosseguir.
+- O script que invoca `claude --agent hotfix`/`--agent planner`
+  (disparar_hotfix.py / disparar_planner.py, em /opt/uid-automation) já
+  passa --max-budget-usd (teto de custo em dolar) e mata a sessão se
+  passar de um timeout de parede (TIMEOUT_MINUTOS) — isso e o limite
+  real, o Planner nao precisa (e nao consegue) verificar cota antes de
+  comecar.
+- Se o Planner perceber que o proprio contexto/janela de conversa esta
+  ficando grande demais no meio de uma fase (nao uma cota externa, mas o
+  proprio bom senso da sessao), a instrucao já dada em cada task
+  continua valendo: parar numa fase COMPLETA e reportar claramente o que
+  falta, em vez de tentar continuar e cortar no meio.
+- Se algo bloquear de verdade (ex: `claude` retornar erro de
+  autenticacao, rate limit da API reportado pelo proprio erro da
+  chamada), reportar isso — nao ha mais canal de "Announcement" no
+  Empire; usar Notificacao no SystemD via MCP PostgreSQL
+  (tipo=LIMITE_CLAUDE_ATIVO, perfil_destino='ADMIN') ou avisar direto no
+  chat/terminal se a sessao for interativa.
 ```
 
 ### 1. Qualificação do Lead
