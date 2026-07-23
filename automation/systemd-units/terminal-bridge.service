@@ -1,0 +1,15 @@
+[Unit]
+Description=SystemD Notificacoes - PTY WebSocket bridge (terminal ao vivo)
+After=network.target docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/uid-automation/terminal_bridge.py
+Restart=always
+RestartSec=3
+User=root
+StandardOutput=append:/root/esteira-logs/terminal-bridge.log
+StandardError=append:/root/esteira-logs/terminal-bridge.log
+
+[Install]
+WantedBy=multi-user.target

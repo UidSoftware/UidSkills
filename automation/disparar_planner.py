@@ -27,6 +27,7 @@ from pathlib import Path
 
 BASE_DIR          = Path(__file__).resolve().parent
 ESTADO_PATH       = BASE_DIR / "planner_processos.json"
+TENTATIVAS_PATH   = BASE_DIR / "planner_tentativas.json"
 SYSTEMD_CONTAINER = "sytemd-backend-1"
 TOKEN_PATH        = Path("/root/.claude_oauth_token")
 LOG_DIR           = Path("/root/esteira-logs")
@@ -48,6 +49,20 @@ def carregar_estado():
 
 def salvar_estado(estado):
     ESTADO_PATH.write_text(json.dumps(estado, indent=2, ensure_ascii=False))
+
+
+def carregar_tentativas():
+    if not TENTATIVAS_PATH.exists():
+        return {}
+    try:
+        return json.loads(TENTATIVAS_PATH.read_text())
+    except json.JSONDecodeError:
+        print(f"aviso: {TENTATIVAS_PATH} corrompido, recomecando do zero.", file=sys.stderr)
+        return {}
+
+
+def salvar_tentativas(tentativas):
+    TENTATIVAS_PATH.write_text(json.dumps(tentativas, indent=2, ensure_ascii=False))
 
 
 def processo_vivo(pid):
@@ -91,8 +106,11 @@ def listar_pendentes():
     return json.loads(resultado.stdout)
 
 
-def reconciliar(estado):
-    remover = []
+def reconciliar(estado, tentativas):
+    """`tentativas` precisa sobreviver ao pop de `estado` (mesmo bug e mesmo
+    fix do disparar_hotfix.py — ver esse arquivo para o raciocinio
+    completo)."""
+    remover_estado = []
     for notificacao_id, info in estado.items():
         pid = info["pid"]
 
@@ -114,25 +132,27 @@ def reconciliar(estado):
 
             if not status.get("encontrada"):
                 print(f"[RECONCILIA] notificacao #{notificacao_id} nao encontrada — removendo do rastreamento.")
-                remover.append(notificacao_id)
+                remover_estado.append(notificacao_id)
+                tentativas.pop(notificacao_id, None)
                 continue
 
             if status.get("resolvida"):
                 print(f"[RECONCILIA] notificacao #{notificacao_id} concluida com sucesso (pid={pid} encerrado).")
-                remover.append(notificacao_id)
+                remover_estado.append(notificacao_id)
+                tentativas.pop(notificacao_id, None)
                 continue
 
-        info["tentativas"] = info.get("tentativas", 0) + 1
-        if info["tentativas"] < MAX_TENTATIVAS:
-            print(f"[RECONCILIA] notificacao #{notificacao_id} nao concluiu — sera tentada de novo ({info['tentativas']}/{MAX_TENTATIVAS}). Log: {info.get('log')}")
+        tentativas[notificacao_id] = tentativas.get(notificacao_id, 0) + 1
+        if tentativas[notificacao_id] < MAX_TENTATIVAS:
+            print(f"[RECONCILIA] notificacao #{notificacao_id} nao concluiu — sera tentada de novo ({tentativas[notificacao_id]}/{MAX_TENTATIVAS}). Log: {info.get('log')}")
         else:
-            print(f"[RECONCILIA] notificacao #{notificacao_id} excedeu {MAX_TENTATIVAS} tentativas — intervencao manual necessaria. Log: {info.get('log')}")
-        remover.append(notificacao_id)
+            print(f"[RECONCILIA] notificacao #{notificacao_id} excedeu {MAX_TENTATIVAS} tentativas — intervencao manual necessaria, NAO sera redisparada automaticamente. Log: {info.get('log')}")
+        remover_estado.append(notificacao_id)
 
-    for notificacao_id in remover:
+    for notificacao_id in remover_estado:
         estado.pop(notificacao_id, None)
 
-    return estado
+    return estado, tentativas
 
 
 def garantir_repo(project_path, nome):
@@ -219,8 +239,10 @@ def disparar(item):
 
 def main():
     estado = carregar_estado()
-    estado = reconciliar(estado)
+    tentativas = carregar_tentativas()
+    estado, tentativas = reconciliar(estado, tentativas)
     salvar_estado(estado)
+    salvar_tentativas(tentativas)
 
     try:
         pendentes = listar_pendentes()
@@ -238,6 +260,10 @@ def main():
             print(f"[SKIP] notificacao #{item['notificacao_id']} ({item['projeto']}) ja tem processo em andamento (pid={estado[notificacao_id]['pid']}).")
             continue
 
+        if tentativas.get(notificacao_id, 0) >= MAX_TENTATIVAS:
+            print(f"[SKIP] notificacao #{item['notificacao_id']} ({item['projeto']}) excedeu {MAX_TENTATIVAS} tentativas — aguardando intervencao manual, nao redisparada.")
+            continue
+
         resultado = disparar(item)
         if resultado is None:
             continue
@@ -247,10 +273,9 @@ def main():
             "pid": pid,
             "log": log_path,
             "iniciado_em": datetime.now(timezone.utc).isoformat(),
-            "tentativas": estado.get(notificacao_id, {}).get("tentativas", 0),
         }
         salvar_estado(estado)
-        print(f"processo iniciado para notificacao #{item['notificacao_id']} ({item['projeto']}, pid={pid}), log={log_path}")
+        print(f"processo iniciado para notificacao #{item['notificacao_id']} ({item['projeto']}, pid={pid}), log={log_path}, tentativa={tentativas.get(notificacao_id, 0) + 1}/{MAX_TENTATIVAS}")
 
     return 0
 

@@ -49,6 +49,7 @@ from pathlib import Path
 
 BASE_DIR          = Path(__file__).resolve().parent
 ESTADO_PATH       = BASE_DIR / "hotfix_processos.json"
+TENTATIVAS_PATH   = BASE_DIR / "hotfix_tentativas.json"
 SYSTEMD_CONTAINER = "sytemd-backend-1"
 TOKEN_PATH        = Path("/root/.claude_oauth_token")
 LOG_DIR           = Path("/root/esteira-logs")
@@ -70,6 +71,20 @@ def carregar_estado():
 
 def salvar_estado(estado):
     ESTADO_PATH.write_text(json.dumps(estado, indent=2, ensure_ascii=False))
+
+
+def carregar_tentativas():
+    if not TENTATIVAS_PATH.exists():
+        return {}
+    try:
+        return json.loads(TENTATIVAS_PATH.read_text())
+    except json.JSONDecodeError:
+        print(f"aviso: {TENTATIVAS_PATH} corrompido, recomecando do zero.", file=sys.stderr)
+        return {}
+
+
+def salvar_tentativas(tentativas):
+    TENTATIVAS_PATH.write_text(json.dumps(tentativas, indent=2, ensure_ascii=False))
 
 
 def processo_vivo(pid):
@@ -121,8 +136,15 @@ def listar_pendentes():
     return json.loads(resultado.stdout)
 
 
-def reconciliar(estado):
-    remover = []
+def reconciliar(estado, tentativas):
+    """Duas contagens com ciclo de vida diferente: `estado` e efemero (um
+    registro por PROCESSO em execucao agora — nasce ao disparar, morre ao
+    reconciliar) enquanto `tentativas` e persistente por MANUTENCAO (teria
+    que sobreviver a exatamente esse pop de `estado` pra o MAX_TENTATIVAS
+    ter efeito — bug real ja confirmado em producao: 12 disparos automaticos
+    em 24h pra mesma manutencao sem nunca desistir, porque o contador vivia
+    dentro do dict que e sempre esvaziado aqui embaixo)."""
+    remover_estado = []
     for manutencao_id, info in estado.items():
         pid = info["pid"]
 
@@ -145,26 +167,29 @@ def reconciliar(estado):
 
             if not status.get("encontrada"):
                 print(f"[RECONCILIA] manutencao #{manutencao_id} nao encontrada no banco — removendo do rastreamento.")
-                remover.append(manutencao_id)
+                remover_estado.append(manutencao_id)
+                tentativas.pop(manutencao_id, None)
                 continue
 
             if status.get("feito"):
                 print(f"[RECONCILIA] manutencao #{manutencao_id} concluida com sucesso (pid={pid} encerrado).")
-                remover.append(manutencao_id)
+                remover_estado.append(manutencao_id)
+                tentativas.pop(manutencao_id, None)
                 continue
 
-        info["tentativas"] = info.get("tentativas", 0) + 1
-        if info["tentativas"] < MAX_TENTATIVAS:
+        tentativas[manutencao_id] = tentativas.get(manutencao_id, 0) + 1
+        if tentativas[manutencao_id] < MAX_TENTATIVAS:
             liberar_manutencao(manutencao_id)
-            print(f"[RECONCILIA] manutencao #{manutencao_id} nao concluiu — liberada para nova tentativa ({info['tentativas']}/{MAX_TENTATIVAS}). Log: {info.get('log')}")
+            print(f"[RECONCILIA] manutencao #{manutencao_id} nao concluiu — liberada para nova tentativa ({tentativas[manutencao_id]}/{MAX_TENTATIVAS}). Log: {info.get('log')}")
         else:
-            print(f"[RECONCILIA] manutencao #{manutencao_id} excedeu {MAX_TENTATIVAS} tentativas — intervencao manual necessaria. Log: {info.get('log')}")
-        remover.append(manutencao_id)
+            print(f"[RECONCILIA] manutencao #{manutencao_id} excedeu {MAX_TENTATIVAS} tentativas — NAO liberada, intervencao manual necessaria (use Liberar/Rodar no terminal em Notificacoes). Log: {info.get('log')}")
+            tentativas.pop(manutencao_id, None)
+        remover_estado.append(manutencao_id)
 
-    for manutencao_id in remover:
+    for manutencao_id in remover_estado:
         estado.pop(manutencao_id, None)
 
-    return estado
+    return estado, tentativas
 
 
 def montar_prompt(item):
@@ -216,8 +241,10 @@ def disparar(item):
 
 def main():
     estado = carregar_estado()
-    estado = reconciliar(estado)
+    tentativas = carregar_tentativas()
+    estado, tentativas = reconciliar(estado, tentativas)
     salvar_estado(estado)
+    salvar_tentativas(tentativas)
 
     try:
         pendentes = listar_pendentes()
@@ -249,10 +276,9 @@ def main():
             "pid": pid,
             "log": log_path,
             "iniciado_em": datetime.now(timezone.utc).isoformat(),
-            "tentativas": estado.get(manutencao_id, {}).get("tentativas", 0),
         }
         salvar_estado(estado)
-        print(f"processo iniciado para manutencao #{item['id']} (pid={pid}), log={log_path}")
+        print(f"processo iniciado para manutencao #{item['id']} (pid={pid}), log={log_path}, tentativa={tentativas.get(manutencao_id, 0) + 1}/{MAX_TENTATIVAS}")
 
     return 0
 
