@@ -46,7 +46,7 @@ LOG_DIR    = Path("/root/esteira-logs")
 HOST, PORT = "127.0.0.1", 8791
 
 TICKET_MAX_AGE_SEG   = 60
-SESSAO_MAX_DURACAO_S = 60 * 60
+SESSAO_MAX_DURACAO_S = 4 * 60 * 60  # pipeline completo (Analista..Pilot) pode passar de 1h
 DELAY_PASTE_BRIEFING = 2.5
 
 _consumidos = {}   # sig -> iat, pra checagem de uso unico
@@ -143,7 +143,7 @@ async def tratar_conexao(websocket):
     comando = (
         f"cd {caminho!r} 2>/dev/null || cd /root; "
         f"export CLAUDE_CODE_OAUTH_TOKEN=$(cat {str(TOKEN_PATH)!r}); "
-        f"claude --agent planner"
+        f"claude --agent planner --permission-mode auto"
     )
 
     processo = await asyncio.create_subprocess_exec(
