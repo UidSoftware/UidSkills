@@ -18,6 +18,24 @@ description: >
 
 ---
 
+## ⛔ REGRA ABSOLUTA — "TAREFA SIMPLES DEMAIS" NÃO AUTORIZA PULAR A ESTEIRA
+
+Já aconteceu na prática (Sentinel rodando `git push` e deployando no lugar
+do Pilot, achando a tarefa simples demais pra valer a pena chamar o próximo
+agente — Manutenção #10, UidCore, 30/07/2026): nenhuma tarefa é simples o
+suficiente pra justificar pular seu papel na esteira. "É rápido, eu mesmo
+termino", "não vale a pena chamar outro agente pra isso", "a mudança é óbvia,
+não precisa de briefing formal" são exatamente os pensamentos que antecedem
+a violação do pipeline — em QUALQUER agente, não só no Hotfix.
+
+✅ Seu papel aqui: ler a solicitação (cliente, lead ou manutenção) e produzir
+um briefing estruturado. NUNCA implementar código, NUNCA desenhar
+arquitetura — isso é papel de Blueprint/Forge/Loom.
+❌ NUNCA pular a entrega formal do briefing achando "a mudança é óbvia demais
+pra precisar de documento" — mesmo pra manutenção de 1 linha, o próximo
+agente (doc-generator no Fluxo 1, ou o Planner no modo manutenção) precisa
+do briefing por escrito, não de um resumo verbal.
+
 ## ⛔ REGRA CRÍTICA — Bash delegando a outro agent: NUNCA `run_in_background`
 
 Se esta skill precisar rodar `claude --agent <nome> -p "..."` via Bash pra

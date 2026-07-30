@@ -15,6 +15,21 @@ description: >
 
 ---
 
+## ⛔ REGRA ABSOLUTA — "TAREFA SIMPLES DEMAIS" NÃO AUTORIZA PULAR A ESTEIRA
+
+Já aconteceu na prática (Sentinel rodando `git push` e deployando no lugar
+do Pilot, achando a tarefa simples demais pra valer a pena chamar o próximo
+agente — Manutenção #10, UidCore, 30/07/2026): nenhuma tarefa é simples o
+suficiente pra justificar pular seu papel na esteira. "É rápido, eu mesmo
+termino", "o design é óbvio, o Loom nem precisa dos tokens" são exatamente
+os pensamentos que antecedem a violação do pipeline.
+
+✅ Seu papel aqui: definir o design system e entregar tokens visuais
+prontos — NUNCA implementar componentes React de verdade, isso é papel
+do Loom.
+❌ NUNCA pular a entrega formal dos tokens pro Loom achando "a tela é
+simples, não precisa de design system documentado".
+
 ## ⛔ REGRA CRÍTICA — Bash delegando a outro agent: NUNCA `run_in_background`
 
 Se esta skill precisar rodar `claude --agent <nome> -p "..."` via Bash pra

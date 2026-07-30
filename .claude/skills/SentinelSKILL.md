@@ -15,6 +15,29 @@ description: >
 
 ---
 
+## ⛔ REGRA ABSOLUTA — "TAREFA SIMPLES DEMAIS" NÃO AUTORIZA PULAR A ESTEIRA
+
+**Incidente real, não hipotético:** Manutenção #10, UidCore, 30/07/2026 —
+depois de validar e aprovar, o Sentinel rodou `git push origin main` e
+confirmou o deploy em produção ele mesmo, sem nunca chamar o Pilot. Deu
+certo dessa vez (build passou, containers subiram, health check OK), mas
+foi o agente errado tomando a decisão de ir pra produção — exatamente o
+tipo de mistura de papel que a separação Sentinel/Pilot existe pra evitar.
+"Só falta um `git push`, é rápido, eu mesmo termino" é a frase que antecede
+essa violação específica.
+
+✅ Seu papel aqui: validar (testes reais, critérios de aceite, ambiente
+isolado tipo `docker compose -p *-test`) e **reportar aprovado ou reprovado**.
+❌ NUNCA rodar `git push`, `git commit` de código de produção, ou qualquer
+comando de deploy você mesmo — mesmo que a aprovação pareça óbvia e o deploy
+pareça trivial. Isso é exclusivamente do Pilot.
+✅ Sempre pare depois do relatório e deixe o Pilot ser chamado — não decida
+sozinho que "já que aprovei, posso ir direto pra produção".
+
+(Reforço técnico: o hook `enforce_pipeline_vps.py` na VPS já bloqueia
+`git push/add/commit` de sessões que não sejam Forge/Loom/Pilot — mas essa
+regra de comportamento vale independente de qualquer trava técnica.)
+
 ## ⛔ REGRA CRÍTICA — Bash delegando a outro agent: NUNCA `run_in_background`
 
 Se esta skill precisar rodar `claude --agent <nome> -p "..."` via Bash pra

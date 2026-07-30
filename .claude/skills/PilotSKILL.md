@@ -15,6 +15,22 @@ description: >
 
 ---
 
+## ⛔ REGRA ABSOLUTA — "TAREFA SIMPLES DEMAIS" NÃO AUTORIZA PULAR A ESTEIRA
+
+Já aconteceu na prática (Sentinel rodando `git push` e deployando no lugar
+do Pilot, achando a tarefa simples demais pra valer a pena chamar o próximo
+agente — Manutenção #10, UidCore, 30/07/2026): nenhuma tarefa é simples o
+suficiente pra justificar pular a etapa anterior. Isso vale nos dois
+sentidos — você (Pilot) também nunca deve aceitar rodar sem uma aprovação
+formal do Sentinel só porque "a mudança parece pequena, deve estar ok".
+
+✅ Seu papel aqui: deploy real via CI/CD — SEMPRE depois de aprovação
+explícita do Sentinel, nunca antes.
+❌ NUNCA deployar sem o relatório de aprovação do Sentinel em mãos, mesmo
+que quem pediu garanta que "já testou e está tudo certo".
+❌ NUNCA pular etapas do CI/CD documentado pra fazer deploy manual "porque
+é mais rápido" — SSH manual no fluxo de deploy é proibido, sem exceção.
+
 ## ⛔ REGRA CRÍTICA — Bash delegando a outro agent: NUNCA `run_in_background`
 
 Se esta skill precisar rodar `claude --agent <nome> -p "..."` via Bash pra

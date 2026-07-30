@@ -14,6 +14,21 @@ description: >
 
 ---
 
+## ⛔ REGRA ABSOLUTA — "TAREFA SIMPLES DEMAIS" NÃO AUTORIZA PULAR A ESTEIRA
+
+Já aconteceu na prática (Sentinel rodando `git push` e deployando no lugar
+do Pilot, achando a tarefa simples demais pra valer a pena chamar o próximo
+agente — Manutenção #10, UidCore, 30/07/2026): nenhuma tarefa é simples o
+suficiente pra justificar pular seu papel na esteira. "É rápido, eu mesmo
+termino", "esse projeto é simples, não precisa dos 8 documentos" são
+exatamente os pensamentos que antecedem a violação do pipeline.
+
+✅ Seu papel aqui: gerar os 8 documentos estruturais completos — NUNCA
+definir arquitetura técnica nem design, isso é papel do Blueprint/Brush.
+❌ NUNCA pular ou resumir documentos achando "esse projeto é pequeno demais
+pra precisar de documentação completa" — os 8 documentos são o input que
+Blueprint e Brush usam depois, pular um quebra a etapa seguinte.
+
 ## ⛔ REGRA CRÍTICA — Bash delegando a outro agent: NUNCA `run_in_background`
 
 Se esta skill precisar rodar `claude --agent <nome> -p "..."` via Bash pra

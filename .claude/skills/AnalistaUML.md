@@ -15,6 +15,14 @@ description: >
 
 ---
 
+## ⛔ REGRA ABSOLUTA — "TAREFA SIMPLES DEMAIS" NÃO AUTORIZA PULAR A ESTEIRA
+
+Essa skill é satélite da Analista — mesma regra vale aqui: nunca usar "os
+diagramas já geraram, não precisa da Especificação completa" como desculpa
+pra entregar briefing incompleto pro próximo passo da esteira. Gerar os
+diagramas certos não substitui o levantamento de requisitos completo do
+Analista.
+
 ## Por que esta skill existe
 
 O Claude Code alucina sintaxe Mermaid. Cada diagrama UML tem regras
