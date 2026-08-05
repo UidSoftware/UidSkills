@@ -92,16 +92,14 @@ export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
 claude --agent blueprint -p "[Levantamento_Requisitos.md + arquitetura tecnica]" \
   --permission-mode auto --output-format stream-json --verbose
 
-# Forge e Loom em PARALELO — backgrounded no mesmo comando shell, com wait
-export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token)
+# Forge e Loom SEQUENCIAL — backend primeiro, depois frontend (nunca em paralelo)
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
 claude --agent forge -p "[Blueprint + requisitos — backend]" \
-  --permission-mode auto --output-format stream-json --verbose > /tmp/forge_out.log 2>&1 &
-FORGE_PID=$!
-claude --agent loom -p "[Blueprint + requisitos — frontend]" \
-  --permission-mode auto --output-format stream-json --verbose > /tmp/loom_out.log 2>&1 &
-LOOM_PID=$!
-wait $FORGE_PID; wait $LOOM_PID
-cat /tmp/forge_out.log; cat /tmp/loom_out.log
+  --permission-mode auto --output-format stream-json --verbose
+
+export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
+claude --agent loom -p "[Blueprint + requisitos — frontend. Backend ja commitado, leia os endpoints reais antes de integrar]" \
+  --permission-mode auto --output-format stream-json --verbose
 
 # Apos ambos retornarem
 export CLAUDE_CODE_OAUTH_TOKEN=$(cat /root/.claude_oauth_token) && \
@@ -119,16 +117,27 @@ estágio concluído e seguir para o próximo. NUNCA encerrar a sessao antes do
 Pilot confirmar o deploy.
 
 ⛔ **NUNCA usar `run_in_background: true` no Bash tool para essas chamadas**
-(nem `&` sem `wait` correspondente). Bug real já confirmado na prática: o
-Planner disparou o Analista com `run_in_background: true`; quando a
-sessão do Planner encerrou logo em seguida, o processo do Analista foi
-**morto junto**, sem gerar nada — a Fase inteira foi perdida em silêncio.
-`run_in_background` só existe pra tarefas que o USUÁRIO quer acompanhar
-depois (ex: um build longo) — nunca para uma delegação da esteira, que
-precisa da sessão atual viva até o processo filho terminar de verdade. A
-ÚNICA forma correta de rodar dois estágios ao mesmo tempo (Forge + Loom)
-é `&` + `wait` explícito dentro do MESMO comando shell (ver exemplo
-acima) — nunca o parâmetro `run_in_background` do Bash tool.
+(nem `&`/`wait` pra rodar dois estágios ao mesmo tempo). Bug real já
+confirmado na prática: o Planner disparou o Analista com
+`run_in_background: true`; quando a sessão do Planner encerrou logo em
+seguida, o processo do Analista foi **morto junto**, sem gerar nada — a
+Fase inteira foi perdida em silêncio. `run_in_background` só existe pra
+tarefas que o USUÁRIO quer acompanhar depois (ex: um build longo) — nunca
+para uma delegação da esteira, que precisa da sessão atual viva até o
+processo filho terminar de verdade.
+
+⛔ **Forge e Loom NUNCA em paralelo — mudança deliberada (05/08/2026),
+não é só preferência de estilo.** Antes a orientação era rodar os dois
+com `&` + `wait` no mesmo comando shell. Isso parava de funcionar direto
+na prática: o classificador de segurança do Claude Code (Stage 2) barra
+spawns de sessão de topo em paralelo/background no mesmo comando bem
+mais que spawns sequenciais — achado real na Manutenção #15 (UidCore,
+05/08/2026), a tentativa em paralelo foi rejeitada com "blocking based on
+stage 1 assessment" e só destravou rodando um de cada vez. Além disso,
+Loom rodando depois do Forge já commitado consegue ler os endpoints reais
+implementados em vez de assumir contrato de API pelo Blueprint — menos
+retrabalho de integração. Sequência obrigatória: **Forge primeiro,
+esperar concluir E commitar, só depois disparar Loom.**
 
 ### Se alguma chamada Bash falhar (Forge, Loom, Sentinel ou Pilot)
 
@@ -193,9 +202,10 @@ Lead + Entrevista + ArquiteturaTecnica no banco (MCP)
    delega BLUEPRINT (planta tecnica + ADRs)
         ↓
    recebe planta tecnica
-   delega FORGE + LOOM em paralelo (implementacao)
+   delega FORGE (backend) — espera commitar
+   delega LOOM (frontend) — sequencial, depois do Forge
         ↓
-   ambos retornam
+   ambos concluidos
    delega SENTINEL (validacao)
         ↓
    Sentinel aprova
@@ -227,18 +237,18 @@ Pipeline A    Pipeline B      Pipeline C        Pipeline D         Escalar
 **Pipeline A — Novo Sistema (completo)**
 ```
 Analista → doc-generator → Blueprint + Brush (paralelo)
-        → Forge + Loom (paralelo) → Sentinel → Pilot
+        → Forge → Loom (sequencial, backend primeiro) → Sentinel → Pilot
 ```
 
 **Pipeline B — Bug / Melhoria UX**
 ```
-Forge + Loom (paralelo, briefing direto do Analista) → Sentinel → Pilot
+Forge → Loom (sequencial, briefing direto do Analista) → Sentinel → Pilot
 ```
 Sem Blueprint, sem Brush, sem doc-generator.
 
 **Pipeline C — Feature Pequena**
 ```
-Blueprint (escopo reduzido, só o delta) → Forge + Loom (paralelo) → Sentinel → Pilot
+Blueprint (escopo reduzido, só o delta) → Forge → Loom (sequencial) → Sentinel → Pilot
 ```
 
 **Pipeline D — Feature Grande / Adicional de Contrato**
@@ -293,8 +303,10 @@ Hotfix recebido → Planner entra aqui
    (layout, ícones Lucide, espaçamentos, componentes existentes, mobile)
         ↓
 [FORGE] via Bash — lê Especificacao_Hotfix.md (backend)
+   Aguardar concluir e commitar (bloqueante)
+        ↓
 [LOOM]  via Bash — lê Especificacao_Hotfix.md + Especificacao_UI_Hotfix.md (frontend)
-   ambos em PARALELO (backgrounded + wait no mesmo comando shell)
+   SEQUENCIAL, só depois do Forge commitar — nunca em paralelo
         ↓
 COMMIT OBRIGATORIO — verificar antes de continuar:
    git status → deve mostrar "nothing to commit, working tree clean"
@@ -476,12 +488,12 @@ Etapa 2 — Arquitetura (BlueprintSKILL)
     Blueprint entrega planta + ADRs + plano
     Planner recebe e valida
         ↓
-Etapa 4 — Implementação (paralelo)
+Etapa 4 — Implementação (sequencial: backend primeiro)
     Planner dispara Forge (backend)
-    Planner dispara Loom (frontend)
-    Ambos trabalham em paralelo
+    Planner aguarda Forge concluir e commitar
+    Planner dispara Loom (frontend) — só depois do Forge
     Planner monitora progresso via Kanban
-    Planner aguarda os dois concluírem
+    Planner aguarda Loom concluir
         ↓
 Etapa 5 — Qualidade (SentinelSKILL)
     Planner dispara Sentinel
@@ -596,9 +608,12 @@ Para Luiz Eduardo:
 ### Quando prosseguir em paralelo
 
 ```
-✅ Forge e Loom → sempre em paralelo (independentes)
-✅ Testes unitários Forge → Loom pode continuar
-✅ Testes de integração Sentinel → espera os dois
+❌ Forge e Loom → NUNCA em paralelo (ver "Como o Planner delega" — mudança
+   05/08/2026, classificador Stage 2 bloqueia spawn de sessão de topo em
+   paralelo bem mais que sequencial, e Loom sequencial consegue integrar
+   com os endpoints reais já commitados em vez de assumir contrato)
+✅ Forge sempre primeiro, Loom só depois de commitado
+✅ Testes de integração Sentinel → espera os dois (Forge e Loom) concluírem
 ```
 
 ### Quando escalar para Luiz Eduardo
@@ -783,7 +798,7 @@ Se criar tasks manualmente ou via subagent, tambem deve chamar /run depois.
 > **O PILOT É OBRIGATÓRIO E É ELE QUE FECHA O LOOP COM O CI/CD.**
 > **NÃO É OPCIONAL MESMO QUE O SENTINEL APROVE.**
 > **SEM PILOT: nenhum commit, nenhum push, CI/CD não dispara, produção não atualiza.**
-> **Pipeline completo: Forge+Loom → Sentinel APROVADO → Pilot commit+push → CI/CD deploya.**
+> **Pipeline completo: Forge → Loom (sequencial) → Sentinel APROVADO → Pilot commit+push → CI/CD deploya.**
 
 ---
 
