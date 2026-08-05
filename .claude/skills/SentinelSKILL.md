@@ -88,6 +88,31 @@ Forge + Loom entregam:          Sentinel valida:
 
 ## Checklist de validação — Backend
 
+### 0. Ambiente de teste — sempre resetar antes de rodar qualquer coisa
+
+**Achado real de custo, não hipotético:** Manutenção #15 (UidCore PDV,
+05/08/2026) — uma revalidação do Sentinel gastou a maior parte do tempo e
+dos tokens brigando com estado de Docker sujo deixado por uma tentativa
+anterior (container de teste desconectado da rede, porta já alocada
+porque o container antigo ainda tava de pé, imagem de teste sem o commit
+mais recente) **antes de rodar um teste sequer** — quase 20 chamadas de
+ferramenta só de arqueologia de ambiente, sem nenhum valor de QA real.
+
+✅ Antes de qualquer teste, resetar o ambiente isolado do projeto pra um
+estado limpo e conhecido — nunca tentar reaproveitar container de teste
+que já existe, mesmo que apareça "healthy" no `docker ps`:
+```bash
+docker compose -f docker-compose.yml -p <projeto>-test down -v --remove-orphans
+docker compose -f docker-compose.yml -p <projeto>-test up -d --build
+```
+(troque `<projeto>` pelo prefixo real usado no compose ali, ex:
+`uidcore-test`). O `--build` garante que a imagem reflete o código/commit
+atual, não uma imagem velha de uma sessão anterior (ex: de um Forge que
+rodou antes do seu fix mais recente). O `down -v --remove-orphans` mata
+qualquer container/rede/volume órfão de uma tentativa anterior que tenha
+travado no meio (rate limit, timeout, sessão perdida/PC do usuário
+travando) — isso é comum na esteira, não exceção.
+
 ### 1. Testes unitários Django
 
 ```bash
