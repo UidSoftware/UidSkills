@@ -326,6 +326,38 @@ COMMIT OBRIGATORIO — verificar antes de continuar:
    Aguardar conclusao (bloqueante)
 ```
 
+### Telemetria do Kanban (`--avancar-etapa`) — best-effort, NUNCA bloqueia
+
+O Kanban de Manutenções (Office > Manutencoes) mostra a coluna/etapa de
+cada card. Como o MODO HOTFIX roda tudo numa sessão só (você orquestrando
+Analista→Forge→Loom→Sentinel→Pilot direto via Bash, sem os 6 crons
+separados de `disparar_etapa.py`), o Kanban só sabe onde a Manutenção
+está se você mesmo avisar. Depois de cada etapa terminar de verdade
+(commit feito, agente confirmou), rode em background, sem esperar
+resposta nem tratar erro:
+
+```bash
+docker exec sytemd-backend-1 python manage.py disparar_hotfix \
+  --avancar-etapa {MANUTENCAO_ID} ESPEC_CRIADA      # depois do Analista
+docker exec sytemd-backend-1 python manage.py disparar_hotfix \
+  --avancar-etapa {MANUTENCAO_ID} BACKEND_PRONTO    # depois do Forge commitar
+docker exec sytemd-backend-1 python manage.py disparar_hotfix \
+  --avancar-etapa {MANUTENCAO_ID} FRONTEND_PRONTO   # depois do Loom commitar
+docker exec sytemd-backend-1 python manage.py disparar_hotfix \
+  --avancar-etapa {MANUTENCAO_ID} SENTINEL_APROVADO # depois do Sentinel aprovar
+```
+
+**Isso é só telemetria — NUNCA um passo obrigatório da esteira.** Se você
+pular algum (esquecer, achar redundante, o comando falhar por qualquer
+motivo), NÃO PARE e NÃO tente de novo — siga o pipeline normalmente. O
+único estado que É garantido no final é o `DEPLOYADO`, e esse já acontece
+sozinho: o `--concluir` que o Pilot roda ao fim (ver "INSTRUCAO FINAL"
+acima) já seta `etapa=DEPLOYADO` automaticamente desde 16/08/2026 — você
+não precisa (e não deve) rodar `--avancar-etapa ... DEPLOYADO` manualmente,
+só o `--concluir` de sempre. Pior caso de pular os passos intermediários:
+o card pula direto de "Pendente" pra "Deployado" no Kanban sem passar
+pelas colunas do meio — visualmente incompleto, mas nunca um erro real.
+
 ### Regras criticas do modo hotfix
 
 ```
