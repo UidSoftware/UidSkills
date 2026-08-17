@@ -288,6 +288,43 @@ Quando chamado pelo Hotfix (manutenção de sistema existente em produção),
 o Planner pula doc-generator, Blueprint e Brush.
 O Analista ENTRA no fluxo — mas em modo hotfix (análise de mudança, não projeto novo).
 
+### PASSO 0 — Retomada: não refazer o que uma tentativa anterior já fez
+
+Uma Manutenção pode chegar até você numa 2ª, 3ª tentativa (sessão anterior
+morreu de rate limit, timeout, etc. — ver seção de retry em
+`disparar_hotfix.py`). **ANTES de chamar Analista, Brush, Forge ou Loom,
+sempre rode primeiro:**
+
+```bash
+git log --oneline -15
+ls -la Especificacao_Hotfix.md Especificacao_UI_Hotfix.md 2>/dev/null
+head -20 Especificacao_Hotfix.md 2>/dev/null
+```
+
+E decida com base em evidência concreta, não suposição:
+
+- **`git log` já tem um commit `feat(...)` (não `docs`) citando esta
+  MANUTENCAO_ID?** Então Forge (se for mudança de backend) ou Loom (se
+  for frontend) já rodaram com sucesso numa tentativa anterior — **NÃO
+  chame esse agente de novo**, pule direto pra próxima etapa do pipeline
+  usando o que já foi commitado.
+- **`Especificacao_Hotfix.md` já existe E as primeiras linhas citam esta
+  MANUTENCAO_ID (mesmo número)?** Reaproveite — **NÃO chame o Analista
+  de novo**. Mesma lógica pra `Especificacao_UI_Hotfix.md` e o Brush.
+- Só rechame um agente que já tinha etapa concluída se: o arquivo/commit
+  não existir, for de uma Manutenção com ID diferente, ou você tiver
+  motivo concreto pra desconfiar que ficou desatualizado (ex: o pedido
+  mudou entre tentativas, ou um Forge anterior alterou algo que
+  contradiz a spec existente). Na dúvida genuína, prefira regenerar —
+  o risco de implementar em cima de spec errada é pior que o custo de
+  refazer.
+
+**Why:** achado real (Manutenção #35, SystemD, 16/08/2026) — a 3ª
+tentativa rodou o Analista do zero de novo, gerando o MESMO
+`Especificacao_Hotfix.md` que a 1ª tentativa já tinha produzido minutos
+antes de morrer de rate limit. Retrabalho puro, sem necessidade — o
+arquivo já estava lá, válido, só ninguém checou antes de regenerar.
+
 ```
 Hotfix recebido → Planner entra aqui
         ↓
