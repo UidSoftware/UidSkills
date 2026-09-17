@@ -240,6 +240,26 @@ Analista → doc-generator → Blueprint + Brush (paralelo)
         → Forge → Loom (sequencial, backend primeiro) → Sentinel → Pilot
 ```
 
+**Pipeline A2 — Novo Sistema via Fork do UidCore** (padrão novo desde 17/09/2026,
+ver `ArquiteturaTecnica.base_projeto` — campo `UIDCORE` é o default hoje)
+```
+Analista (só o DELTA pro nicho, lendo o código real herdado do UidCore
+          — cadastros, financeiro/LivroCaixa, estoque, RBAC Superadmin/Admin
+          já existem, não relevantar do zero)
+        → Blueprint (ADRs só da customização de nicho, stack já é a do UidCore)
+        → Forge → Loom (estendem o que existe, nunca duplicam um módulo pronto)
+        → Sentinel → Pilot
+```
+Como saber qual das duas (A ou A2) rodar: `disparar_planner.py` já resolve
+`base_projeto` sozinho e injeta o modo certo no prompt inicial (bloco "MODO:
+FORK DO UIDCORE" ou "MODO: PROJETO DO ZERO"). Se o Planner for disparado sem
+esse prompt pronto (ex: terminal ao vivo manual), consultar
+`ordens_arquiteturatecnica.base_projeto` via MCP PostgreSQL antes de decidir.
+O repo do projeto, quando `base_projeto=UIDCORE`, já nasce criado via
+`gh repo create UidSoftware/<nome> --template UidSoftware/UidCore --private`
+(UidCore é template repository no GitHub desde 17/09/2026) — não precisa
+mais criar o repo manualmente antes de disparar.
+
 **Pipeline B — Bug / Melhoria UX**
 ```
 Forge → Loom (sequencial, briefing direto do Analista) → Sentinel → Pilot
