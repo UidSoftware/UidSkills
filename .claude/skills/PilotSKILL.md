@@ -414,6 +414,10 @@ Pilot faz git push → GitHub Actions detecta → Build + Deploy automático na 
    Recusar esse comando deixa a Manutenção como pendente, o cron dispara o
    Planner de novo 3x à toa (~$4 desperdiçados — achado real, Manutenção
    #61, 16/09/2026). Qualquer OUTRO docker exec continua proibido.
+   ⚠️ Manutenção MULTI-FASE: só rodar o --concluir na ÚLTIMA fase. Se o
+   briefing/spec indicar que ainda há fases seguintes, NÃO concluir — senão
+   feito=True no fim da 1ª fase engana o monitoramento e o cron nunca mais
+   dispara as fases restantes (achado real, 06/09/2026).
 ❌ NUNCA tentar acessar Docker de dentro do container — não funciona
 ❌ NUNCA deixar "instruções manuais de deploy" — se não consegue fazer o push, reporta
 ✅ SEMPRE: git add → git commit → git push origin main → CI/CD cuida do resto
